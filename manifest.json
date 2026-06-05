@@ -2,7 +2,7 @@
   "name": "PlantSteward · 植物管家",
   "short_name": "植物管家",
   "description": "Plant watering & fertilizing log, DLI light calculator, and care reference for NYC houseplants.",
-  "start_url": "./index.html",
+  "start_url": "./",
   "display": "standalone",
   "orientation": "portrait",
   "background_color": "#121e14",
