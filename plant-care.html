@@ -1,0 +1,1554 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="植物管家">
+<title>植物管家</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Noto+Serif+SC:wght@400;600;700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg:        #1a2118;
+  --bg2:       #232d20;
+  --bg3:       #2c3828;
+  --surface:   #334030;
+  --surface2:  #3d4c38;
+  --border:    #4a5c44;
+  --text:      #e8e0d0;
+  --text2:     #b8b09a;
+  --text3:     #7a7060;
+  --accent:    #a8c878;
+  --accent2:   #d4a853;
+  --red:       #e07060;
+  --yellow:    #d4a853;
+  --green:     #7ab868;
+  --tab-h:     64px;
+  --safe-top:  env(safe-area-inset-top, 0px);
+  --safe-bot:  env(safe-area-inset-bottom, 0px);
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+
+html, body {
+  height: 100%;
+  background: var(--bg);
+  color: var(--text);
+  font-family: 'Noto Serif SC', serif;
+  overflow: hidden;
+}
+
+/* ── App shell ── */
+#app {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  padding-top: var(--safe-top);
+}
+
+/* ── Pages ── */
+.page {
+  display: none;
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding-bottom: calc(var(--tab-h) + var(--safe-bot) + 16px);
+  -webkit-overflow-scrolling: touch;
+}
+.page.active { display: block; }
+
+/* ── Tab bar ── */
+#tabbar {
+  position: fixed;
+  bottom: 0; left: 0; right: 0;
+  height: calc(var(--tab-h) + var(--safe-bot));
+  padding-bottom: var(--safe-bot);
+  background: var(--bg2);
+  border-top: 1px solid var(--border);
+  display: flex;
+  z-index: 100;
+}
+.tab-btn {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  background: none;
+  border: none;
+  color: var(--text3);
+  cursor: pointer;
+  transition: color .2s;
+  padding: 0;
+}
+.tab-btn.active { color: var(--accent); }
+.tab-btn svg { width: 22px; height: 22px; }
+.tab-btn span { font-size: 10px; font-family: 'Noto Serif SC', serif; letter-spacing: .5px; }
+
+/* ── Page header ── */
+.page-header {
+  padding: 20px 20px 12px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  position: sticky;
+  top: 0;
+  background: var(--bg);
+  z-index: 10;
+  border-bottom: 1px solid var(--border);
+}
+.page-title {
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--text);
+  letter-spacing: .5px;
+}
+.page-sub {
+  font-size: 12px;
+  color: var(--text3);
+  margin-top: 2px;
+  font-family: 'DM Mono', monospace;
+}
+
+/* ── Buttons ── */
+.btn {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  color: var(--text);
+  border-radius: 10px;
+  padding: 10px 16px;
+  font-size: 14px;
+  font-family: 'Noto Serif SC', serif;
+  cursor: pointer;
+  transition: background .15s;
+}
+.btn:active { background: var(--surface2); }
+.btn-accent {
+  background: var(--accent);
+  color: var(--bg);
+  border-color: var(--accent);
+  font-weight: 600;
+}
+.btn-accent:active { opacity: .85; }
+.btn-sm { padding: 6px 12px; font-size: 12px; }
+.btn-icon {
+  width: 36px; height: 36px;
+  border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  padding: 0;
+}
+
+/* ── Plant cards ── */
+.plant-list { padding: 12px 16px; display: flex; flex-direction: column; gap: 10px; }
+
+.plant-card {
+  background: var(--bg2);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 14px 16px;
+  cursor: pointer;
+  transition: background .15s;
+  position: relative;
+  overflow: hidden;
+}
+.plant-card::before {
+  content: '';
+  position: absolute;
+  left: 0; top: 0; bottom: 0;
+  width: 4px;
+  border-radius: 4px 0 0 4px;
+}
+.plant-card.urgent::before { background: var(--red); }
+.plant-card.warning::before { background: var(--yellow); }
+.plant-card.ok::before { background: var(--green); }
+.plant-card:active { background: var(--bg3); }
+
+.card-top { display: flex; align-items: flex-start; justify-content: space-between; margin-bottom: 10px; }
+.card-name { font-size: 16px; font-weight: 600; color: var(--text); }
+.card-tags { display: flex; gap: 6px; align-items: center; margin-top: 4px; }
+.tag {
+  font-size: 10px;
+  font-family: 'DM Mono', monospace;
+  padding: 2px 8px;
+  border-radius: 20px;
+  border: 1px solid var(--border);
+  color: var(--text2);
+}
+.tag.indoor { border-color: #5588aa; color: #88bbcc; }
+.tag.outdoor { border-color: #88aa55; color: var(--accent); }
+
+.card-stats { display: flex; gap: 12px; }
+.stat-item { flex: 1; }
+.stat-label {
+  font-size: 10px;
+  color: var(--text3);
+  font-family: 'DM Mono', monospace;
+  margin-bottom: 3px;
+}
+.stat-val {
+  font-size: 13px;
+  font-family: 'DM Mono', monospace;
+  font-weight: 500;
+}
+.stat-val.ok { color: var(--green); }
+.stat-val.warn { color: var(--yellow); }
+.stat-val.urgent { color: var(--red); }
+.stat-val.never { color: var(--text3); }
+
+/* ── Empty state ── */
+.empty-state {
+  text-align: center;
+  padding: 60px 30px;
+  color: var(--text3);
+}
+.empty-state .big-icon { font-size: 48px; margin-bottom: 16px; }
+.empty-state p { font-size: 14px; line-height: 1.8; }
+
+/* ── FAB ── */
+.fab {
+  position: fixed;
+  right: 20px;
+  bottom: calc(var(--tab-h) + var(--safe-bot) + 16px);
+  width: 52px; height: 52px;
+  border-radius: 50%;
+  background: var(--accent);
+  color: var(--bg);
+  border: none;
+  font-size: 26px;
+  display: flex; align-items: center; justify-content: center;
+  box-shadow: 0 4px 20px rgba(0,0,0,.4);
+  cursor: pointer;
+  z-index: 50;
+  transition: transform .15s;
+}
+.fab:active { transform: scale(.92); }
+
+/* ── Modal / Sheet ── */
+.overlay {
+  display: none;
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,.6);
+  z-index: 200;
+  backdrop-filter: blur(2px);
+}
+.overlay.open { display: flex; align-items: flex-end; }
+.sheet {
+  background: var(--bg2);
+  border-radius: 20px 20px 0 0;
+  width: 100%;
+  max-height: 90vh;
+  overflow-y: auto;
+  padding: 0 0 calc(var(--safe-bot) + 20px);
+  animation: slideUp .25s ease;
+}
+@keyframes slideUp {
+  from { transform: translateY(100%); }
+  to   { transform: translateY(0); }
+}
+.sheet-handle {
+  width: 36px; height: 4px;
+  background: var(--border);
+  border-radius: 2px;
+  margin: 12px auto 4px;
+}
+.sheet-header {
+  padding: 12px 20px 16px;
+  border-bottom: 1px solid var(--border);
+  display: flex; align-items: center; justify-content: space-between;
+}
+.sheet-title { font-size: 17px; font-weight: 700; }
+.sheet-body { padding: 16px 20px; }
+
+/* ── Form ── */
+.form-group { margin-bottom: 16px; }
+.form-label {
+  display: block;
+  font-size: 12px;
+  color: var(--text2);
+  margin-bottom: 6px;
+  font-family: 'DM Mono', monospace;
+  text-transform: uppercase;
+  letter-spacing: .8px;
+}
+.form-input {
+  width: 100%;
+  background: var(--bg3);
+  border: 1px solid var(--border);
+  color: var(--text);
+  border-radius: 10px;
+  padding: 11px 14px;
+  font-size: 15px;
+  font-family: 'Noto Serif SC', serif;
+  outline: none;
+  transition: border-color .15s;
+}
+.form-input:focus { border-color: var(--accent); }
+.form-select { appearance: none; cursor: pointer; }
+.radio-group { display: flex; gap: 10px; }
+.radio-btn {
+  flex: 1;
+  padding: 10px;
+  background: var(--bg3);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  color: var(--text2);
+  font-size: 14px;
+  font-family: 'Noto Serif SC', serif;
+  cursor: pointer;
+  text-align: center;
+  transition: all .15s;
+}
+.radio-btn.selected {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: rgba(168,200,120,.1);
+}
+
+/* ── Detail page ── */
+.detail-hero {
+  background: var(--bg2);
+  padding: 20px;
+  border-bottom: 1px solid var(--border);
+}
+.detail-name { font-size: 24px; font-weight: 700; margin-bottom: 8px; }
+.detail-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 14px; }
+.detail-stat {
+  background: var(--bg3);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 12px 14px;
+}
+.detail-stat-label { font-size: 10px; color: var(--text3); font-family: 'DM Mono', monospace; margin-bottom: 4px; }
+.detail-stat-val { font-size: 18px; font-family: 'DM Mono', monospace; font-weight: 500; }
+
+.action-row {
+  display: flex;
+  gap: 10px;
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--border);
+}
+.action-btn {
+  flex: 1;
+  padding: 13px 10px;
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  background: var(--bg3);
+  color: var(--text);
+  font-size: 14px;
+  font-family: 'Noto Serif SC', serif;
+  cursor: pointer;
+  display: flex; flex-direction: column; align-items: center; gap: 5px;
+  transition: background .15s;
+}
+.action-btn:active { background: var(--surface2); }
+.action-btn .action-icon { font-size: 20px; }
+.action-btn.water { border-color: #5588aa; }
+.action-btn.fert  { border-color: var(--accent2); }
+.action-btn.log-water { border-color: #3a6080; }
+.action-btn.log-fert  { border-color: #8a6030; }
+
+.log-section { padding: 16px 20px; }
+.log-section-title {
+  font-size: 12px;
+  color: var(--text3);
+  font-family: 'DM Mono', monospace;
+  text-transform: uppercase;
+  letter-spacing: .8px;
+  margin-bottom: 10px;
+}
+.log-list { display: flex; flex-direction: column; gap: 6px; }
+.log-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  background: var(--bg3);
+  border-radius: 10px;
+  border: 1px solid var(--border);
+}
+.log-dot {
+  width: 8px; height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.log-dot.water { background: #5599bb; }
+.log-dot.fert  { background: var(--accent2); }
+.log-info { flex: 1; }
+.log-type { font-size: 13px; color: var(--text); }
+.log-date { font-size: 11px; color: var(--text3); font-family: 'DM Mono', monospace; margin-top: 2px; }
+.log-note { font-size: 11px; color: var(--text2); margin-top: 2px; font-style: italic; }
+.log-del {
+  background: none; border: none;
+  color: var(--text3); cursor: pointer;
+  font-size: 16px; padding: 4px;
+}
+
+/* ── Light calc page ── */
+.calc-section {
+  margin: 12px 16px;
+  background: var(--bg2);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  overflow: hidden;
+}
+.calc-section-header {
+  padding: 12px 16px;
+  background: var(--bg3);
+  border-bottom: 1px solid var(--border);
+  font-size: 12px;
+  color: var(--text2);
+  font-family: 'DM Mono', monospace;
+  text-transform: uppercase;
+  letter-spacing: .8px;
+}
+.calc-row {
+  display: grid;
+  grid-template-columns: 1fr 24px 1fr 24px 1fr 24px 1fr;
+  align-items: center;
+  gap: 0;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--border);
+  position: relative;
+}
+.calc-row:last-child { border-bottom: none; }
+.calc-field { display: flex; flex-direction: column; gap: 3px; }
+.calc-field-label { font-size: 9px; color: var(--text3); font-family: 'DM Mono', monospace; text-transform: uppercase; }
+.calc-input {
+  background: var(--bg3);
+  border: 1px solid var(--border);
+  color: var(--text);
+  border-radius: 8px;
+  padding: 8px 10px;
+  font-size: 14px;
+  font-family: 'DM Mono', monospace;
+  outline: none;
+  width: 100%;
+  transition: border-color .15s;
+}
+.calc-input:focus { border-color: var(--accent); }
+.calc-arrow { text-align: center; color: var(--text3); font-size: 12px; }
+.calc-result {
+  background: rgba(168,200,120,.08);
+  border: 1px solid rgba(168,200,120,.3);
+  border-radius: 8px;
+  padding: 8px 10px;
+  font-size: 14px;
+  font-family: 'DM Mono', monospace;
+  color: var(--accent);
+  font-weight: 500;
+}
+.calc-dli {
+  background: rgba(212,168,83,.1);
+  border-color: rgba(212,168,83,.3);
+  color: var(--accent2);
+}
+.calc-row-label {
+  grid-column: 1 / -1;
+  font-size: 11px;
+  color: var(--text3);
+  font-family: 'DM Mono', monospace;
+  margin-bottom: 6px;
+}
+.calc-name-input {
+  grid-column: 1 / -1;
+  margin-bottom: 8px;
+}
+.add-row-btn {
+  margin: 12px 16px;
+  width: calc(100% - 32px);
+  padding: 12px;
+  background: var(--bg2);
+  border: 1px dashed var(--border);
+  color: var(--text3);
+  border-radius: 12px;
+  font-size: 13px;
+  font-family: 'Noto Serif SC', serif;
+  cursor: pointer;
+  transition: all .15s;
+}
+.add-row-btn:active { border-color: var(--accent); color: var(--accent); }
+
+.coeff-row {
+  margin: 0 16px 12px;
+  padding: 12px 14px;
+  background: var(--bg2);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.coeff-row label { font-size: 12px; color: var(--text2); flex: 1; font-family: 'DM Mono', monospace; }
+.coeff-input {
+  width: 80px;
+  background: var(--bg3);
+  border: 1px solid var(--border);
+  color: var(--text);
+  border-radius: 8px;
+  padding: 7px 10px;
+  font-size: 13px;
+  font-family: 'DM Mono', monospace;
+  outline: none;
+  text-align: right;
+}
+.coeff-input:focus { border-color: var(--accent); }
+
+/* ── Reference page ── */
+.search-bar {
+  margin: 12px 16px 0;
+  position: relative;
+}
+.search-input {
+  width: 100%;
+  background: var(--bg2);
+  border: 1px solid var(--border);
+  color: var(--text);
+  border-radius: 12px;
+  padding: 11px 14px 11px 40px;
+  font-size: 14px;
+  font-family: 'Noto Serif SC', serif;
+  outline: none;
+}
+.search-input:focus { border-color: var(--accent); }
+.search-icon {
+  position: absolute;
+  left: 13px; top: 50%;
+  transform: translateY(-50%);
+  color: var(--text3);
+  font-size: 16px;
+  pointer-events: none;
+}
+
+.ref-group { margin: 12px 16px; }
+.ref-group-title {
+  font-size: 11px;
+  color: var(--text3);
+  font-family: 'DM Mono', monospace;
+  text-transform: uppercase;
+  letter-spacing: .8px;
+  padding: 8px 0 6px;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 6px;
+  cursor: pointer;
+  display: flex; align-items: center; justify-content: space-between;
+}
+.ref-items { display: flex; flex-direction: column; gap: 4px; }
+.ref-item {
+  background: var(--bg2);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  overflow: hidden;
+}
+.ref-item-header {
+  padding: 11px 14px;
+  display: flex; align-items: center; justify-content: space-between;
+  cursor: pointer;
+}
+.ref-item-name { font-size: 14px; font-weight: 600; }
+.ref-item-sub { font-size: 11px; color: var(--text3); font-family: 'DM Mono', monospace; margin-top: 2px; }
+.ref-item-body {
+  display: none;
+  padding: 0 14px 12px;
+  border-top: 1px solid var(--border);
+}
+.ref-item-body.open { display: block; }
+.ref-data-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 10px; }
+.ref-data-cell {
+  background: var(--bg3);
+  border-radius: 8px;
+  padding: 8px 10px;
+}
+.ref-data-label { font-size: 9px; color: var(--text3); font-family: 'DM Mono', monospace; text-transform: uppercase; }
+.ref-data-val { font-size: 13px; font-family: 'DM Mono', monospace; color: var(--accent); margin-top: 2px; }
+.ref-data-val.amber { color: var(--accent2); }
+.ref-note { font-size: 11px; color: var(--text2); margin-top: 8px; line-height: 1.6; font-style: italic; }
+
+/* ── Settings row ── */
+.settings-row {
+  display: flex; gap: 8px;
+  padding: 12px 16px 0;
+}
+
+/* ── Toast ── */
+#toast {
+  position: fixed;
+  bottom: calc(var(--tab-h) + var(--safe-bot) + 20px);
+  left: 50%; transform: translateX(-50%) translateY(20px);
+  background: var(--surface2);
+  color: var(--text);
+  padding: 10px 20px;
+  border-radius: 20px;
+  font-size: 13px;
+  z-index: 500;
+  opacity: 0;
+  transition: all .25s;
+  white-space: nowrap;
+  border: 1px solid var(--border);
+}
+#toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+
+/* ── Confirm dialog ── */
+#confirm-overlay {
+  display: none;
+  position: fixed; inset: 0;
+  background: rgba(0,0,0,.7);
+  z-index: 300;
+  align-items: center; justify-content: center;
+}
+#confirm-overlay.open { display: flex; }
+.confirm-box {
+  background: var(--bg2);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  padding: 24px 20px;
+  width: 280px;
+  text-align: center;
+}
+.confirm-title { font-size: 16px; font-weight: 700; margin-bottom: 8px; }
+.confirm-msg { font-size: 13px; color: var(--text2); margin-bottom: 20px; line-height: 1.6; }
+.confirm-btns { display: flex; gap: 10px; }
+.confirm-btns button { flex: 1; }
+
+/* scrollbar */
+::-webkit-scrollbar { width: 3px; }
+::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+</style>
+</head>
+<body>
+<div id="app">
+
+  <!-- ══ PAGE: 我的植物 ══ -->
+  <div class="page active" id="page-plants">
+    <div class="page-header">
+      <div>
+        <div class="page-title">🌿 我的植物</div>
+        <div class="page-sub" id="plant-count-label">加载中…</div>
+      </div>
+      <div style="display:flex;gap:8px">
+        <button class="btn btn-sm" onclick="exportData()">导出</button>
+        <button class="btn btn-sm" onclick="triggerImport()">导入</button>
+      </div>
+    </div>
+    <div id="plant-list" class="plant-list"></div>
+    <input type="file" id="import-input" accept=".json" style="display:none" onchange="importData(event)">
+  </div>
+
+  <!-- ══ PAGE: 植物详情 ══ -->
+  <div class="page" id="page-detail">
+    <div class="page-header">
+      <button class="btn btn-sm" onclick="showPage('plants')">← 返回</button>
+      <button class="btn btn-sm" style="color:var(--red);border-color:var(--red)" onclick="deletePlant()">删除</button>
+    </div>
+    <div id="detail-content"></div>
+  </div>
+
+  <!-- ══ PAGE: 光照计算 ══ -->
+  <div class="page" id="page-light">
+    <div class="page-header">
+      <div>
+        <div class="page-title">☀️ 光照计算</div>
+        <div class="page-sub">LUX → PPFD → DLI</div>
+      </div>
+    </div>
+
+    <!-- 户外日照 DLI 估算 -->
+    <div style="margin:12px 16px 0;padding-bottom:8px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between">
+      <div style="font-size:11px;color:var(--text3);font-family:'DM Mono',monospace;text-transform:uppercase;letter-spacing:.8px">🌤 户外日照 DLI 估算（纽约）</div>
+      <!-- 胶囊切换 -->
+      <div style="display:flex;background:var(--bg3);border:1px solid var(--border);border-radius:20px;padding:2px;gap:2px">
+        <button id="mode-typical" onclick="setSkyMode('typical')"
+          style="padding:4px 10px;border-radius:16px;border:none;font-size:11px;font-family:'DM Mono',monospace;cursor:pointer;background:var(--accent);color:var(--bg);transition:all .15s">典型晴天</button>
+        <button id="mode-clear" onclick="setSkyMode('clear')"
+          style="padding:4px 10px;border-radius:16px;border:none;font-size:11px;font-family:'DM Mono',monospace;cursor:pointer;background:transparent;color:var(--text3);transition:all .15s">极端晴朗</button>
+      </div>
+    </div>
+    <div class="calc-section" style="margin:8px 16px">
+      <div style="padding:14px 16px;display:flex;flex-direction:column;gap:12px">
+
+        <!-- 月份 -->
+        <div class="form-group" style="margin:0">
+          <label class="form-label">月份</label>
+          <select class="form-input form-select" id="od-month" onchange="calcOutdoorDLI()">
+            <option value="1">1月</option><option value="2">2月</option>
+            <option value="3">3月</option><option value="4">4月</option>
+            <option value="5">5月</option><option value="6" selected>6月</option>
+            <option value="7">7月</option><option value="8">8月</option>
+            <option value="9">9月</option><option value="10">10月</option>
+            <option value="11">11月</option><option value="12">12月</option>
+          </select>
+          <div id="od-sunrise-label" style="margin-top:5px;font-size:11px;color:var(--text3);font-family:'DM Mono',monospace"></div>
+        </div>
+
+        <!-- 直射时段 -->
+        <div class="form-group" style="margin:0">
+          <label class="form-label">直射阳光时段</label>
+          <div style="display:flex;align-items:center;gap:10px">
+            <input class="calc-input" type="time" id="od-start" value="09:00" oninput="calcOutdoorDLI()" style="flex:1">
+            <span style="color:var(--text3);font-size:13px">→</span>
+            <input class="calc-input" type="time" id="od-end" value="13:00" oninput="calcOutdoorDLI()" style="flex:1">
+          </div>
+        </div>
+
+        <!-- 有效散射时长 -->
+        <div class="form-group" style="margin:0">
+          <label class="form-label">有效散射时长（小时）</label>
+          <input class="calc-input" type="number" id="od-diffuse-hrs" value="3" min="0" max="12" step="0.5" oninput="calcOutdoorDLI()" style="width:100%">
+          <div style="margin-top:5px;font-size:11px;color:var(--text3);font-family:'DM Mono',monospace">自行估算：天空明亮但无直射的时段，排除遮挡较深的早晚</div>
+        </div>
+
+        <!-- 结果区 -->
+        <div id="od-result" style="display:none">
+          <div style="height:1px;background:var(--border);margin:4px 0 12px"></div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px">
+            <div class="detail-stat">
+              <div class="detail-stat-label">☀️ 直射 DLI</div>
+              <div class="detail-stat-val" id="od-direct-dli" style="font-size:16px;color:var(--accent)">—</div>
+            </div>
+            <div class="detail-stat">
+              <div class="detail-stat-label">🌥 散射 DLI</div>
+              <div class="detail-stat-val" id="od-diffuse-dli" style="font-size:16px;color:var(--text2)">—</div>
+            </div>
+          </div>
+          <div style="background:rgba(168,200,120,.08);border:1px solid rgba(168,200,120,.3);border-radius:10px;padding:12px 14px;text-align:center">
+            <div style="font-size:10px;color:var(--text3);font-family:'DM Mono',monospace;margin-bottom:4px">合计 DLI（晴天上限）</div>
+            <div id="od-total-dli" style="font-size:24px;font-family:'DM Mono',monospace;font-weight:500;color:var(--accent)">—</div>
+            <div style="font-size:10px;color:var(--text3);margin-top:2px">mol/m²/day</div>
+          </div>
+          <div id="od-detail-text" style="margin-top:10px;font-size:11px;color:var(--text3);font-family:'DM Mono',monospace;line-height:1.8"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 分隔 -->
+    <div style="margin:16px 16px 0;font-size:11px;color:var(--text3);font-family:'DM Mono',monospace;text-transform:uppercase;letter-spacing:.8px;padding-bottom:6px;border-bottom:1px solid var(--border)">
+      💡 补光灯 LUX → PPFD → DLI
+    </div>
+    <div style="margin:8px 16px 0">
+      <div class="coeff-row" style="margin:0 0 8px">
+        <label>全光谱LED 转换系数</label>
+        <input class="coeff-input" id="coeff-input" type="number" value="0.0185" step="0.0001" oninput="recalcAll()">
+      </div>
+    </div>
+    <div id="calc-rows"></div>
+    <button class="add-row-btn" onclick="addCalcRow()">＋ 添加测量点</button>
+    <div style="margin:0 16px 12px;padding:12px 14px;background:var(--bg2);border:1px solid var(--border);border-radius:12px">
+      <div style="font-size:11px;color:var(--text3);font-family:'DM Mono',monospace;line-height:1.8">
+        PPFD = LUX × 系数<br>
+        DLI = PPFD × 小时 × 3.6 ÷ 1000<br>
+        <span style="color:var(--accent2)">DLI 单位：mol/m²/day</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══ PAGE: 参考数据 ══ -->
+  <div class="page" id="page-ref">
+    <div class="page-header">
+      <div>
+        <div class="page-title">📖 参考数据</div>
+        <div class="page-sub">光照 · 施肥 · 养护</div>
+      </div>
+    </div>
+    <div class="search-bar">
+      <span class="search-icon">🔍</span>
+      <input class="search-input" id="ref-search" placeholder="搜索植物名称…" oninput="filterRef()">
+    </div>
+    <div id="ref-list"></div>
+  </div>
+
+  <!-- ══ TAB BAR ══ -->
+  <div id="tabbar">
+    <button class="tab-btn active" onclick="showPage('plants')" id="tab-plants">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+        <path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10 10-4.5 10-10S17.5 2 12 2z"/>
+        <path d="M12 12c0-4 3-7 7-7M12 12c0-4-3-7-7-7M12 12v8"/>
+      </svg>
+      <span>我的植物</span>
+    </button>
+    <button class="tab-btn" onclick="showPage('light')" id="tab-light">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+        <circle cx="12" cy="12" r="5"/>
+        <line x1="12" y1="1" x2="12" y2="3"/>
+        <line x1="12" y1="21" x2="12" y2="23"/>
+        <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/>
+        <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/>
+        <line x1="1" y1="12" x2="3" y2="12"/>
+        <line x1="21" y1="12" x2="23" y2="12"/>
+        <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/>
+        <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/>
+      </svg>
+      <span>光照计算</span>
+    </button>
+    <button class="tab-btn" onclick="showPage('ref')" id="tab-ref">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+        <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/>
+        <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/>
+      </svg>
+      <span>参考数据</span>
+    </button>
+  </div>
+
+</div>
+
+<!-- ══ FAB ══ -->
+<button class="fab" id="fab" onclick="openAddPlant()">＋</button>
+
+<!-- ══ SHEET: 添加植物 ══ -->
+<div class="overlay" id="sheet-add">
+  <div class="sheet">
+    <div class="sheet-handle"></div>
+    <div class="sheet-header">
+      <div class="sheet-title">添加植物</div>
+      <button class="btn btn-sm" onclick="closeSheet('sheet-add')">关闭</button>
+    </div>
+    <div class="sheet-body">
+      <div class="form-group">
+        <label class="form-label">植物名称</label>
+        <input class="form-input" id="add-name" placeholder="例：绿薄荷">
+      </div>
+      <div class="form-group">
+        <label class="form-label">位置</label>
+        <div class="radio-group">
+          <div class="radio-btn selected" id="loc-indoor" onclick="selectLoc('indoor')">🏠 室内</div>
+          <div class="radio-btn" id="loc-outdoor" onclick="selectLoc('outdoor')">🌤 室外</div>
+        </div>
+      </div>
+      <div class="form-group">
+        <label class="form-label">施肥周期</label>
+        <select class="form-input form-select" id="add-fert-cycle">
+          <option value="7">蔬菜香草 — 每7天</option>
+          <option value="14" selected>普通观叶 — 每14天</option>
+          <option value="30">月施一次 — 每30天</option>
+          <option value="45">耐旱植物 — 每45天（生长季）</option>
+          <option value="90">极少施肥 — 每季度</option>
+          <option value="custom">自定义天数</option>
+        </select>
+      </div>
+      <div class="form-group" id="custom-cycle-group" style="display:none">
+        <label class="form-label">自定义天数</label>
+        <input class="form-input" id="add-custom-cycle" type="number" placeholder="天数" min="1">
+      </div>
+      <div class="form-group">
+        <label class="form-label">备注（可选）</label>
+        <input class="form-input" id="add-note" placeholder="例：放在窗台，补光灯照射">
+      </div>
+      <button class="btn btn-accent" style="width:100%;padding:14px" onclick="savePlant()">添加</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══ SHEET: 记录浇水/施肥 ══ -->
+<div class="overlay" id="sheet-log">
+  <div class="sheet">
+    <div class="sheet-handle"></div>
+    <div class="sheet-header">
+      <div class="sheet-title" id="log-sheet-title">记录</div>
+      <button class="btn btn-sm" onclick="closeSheet('sheet-log')">关闭</button>
+    </div>
+    <div class="sheet-body">
+      <div class="form-group">
+        <label class="form-label">日期时间</label>
+        <input class="form-input" id="log-datetime" type="datetime-local">
+      </div>
+      <div class="form-group">
+        <label class="form-label">备注（可选）</label>
+        <input class="form-input" id="log-note" placeholder="例：浇了约200ml">
+      </div>
+      <button class="btn btn-accent" style="width:100%;padding:14px" onclick="saveLog()">保存记录</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══ TOAST ══ -->
+<div id="toast"></div>
+
+<!-- ══ CONFIRM ══ -->
+<div id="confirm-overlay">
+  <div class="confirm-box">
+    <div class="confirm-title" id="confirm-title">确认</div>
+    <div class="confirm-msg" id="confirm-msg"></div>
+    <div class="confirm-btns">
+      <button class="btn" onclick="confirmCancel()">取消</button>
+      <button class="btn" style="color:var(--red);border-color:var(--red)" onclick="confirmOk()">确认删除</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ══════════════════════════════════════════
+//  DATA
+// ══════════════════════════════════════════
+let db = { plants: [], logs: [] };
+let currentPlantId = null;
+let logType = null; // 'water' | 'fert'
+let confirmCb = null;
+let calcRowCount = 0;
+
+function loadDB() {
+  try { db = JSON.parse(localStorage.getItem('plantcare_db') || 'null') || { plants: [], logs: [] }; }
+  catch(e) { db = { plants: [], logs: [] }; }
+}
+function saveDB() { localStorage.setItem('plantcare_db', JSON.stringify(db)); }
+function genId() { return Date.now().toString(36) + Math.random().toString(36).slice(2,6); }
+
+// ══════════════════════════════════════════
+//  NAV
+// ══════════════════════════════════════════
+function showPage(name) {
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+  document.getElementById('page-' + name).classList.add('active');
+  const tab = document.getElementById('tab-' + name);
+  if (tab) tab.classList.add('active');
+  const fab = document.getElementById('fab');
+  fab.style.display = name === 'plants' ? 'flex' : 'none';
+  if (name === 'plants') renderPlants();
+  if (name === 'ref') renderRef();
+}
+
+// ══════════════════════════════════════════
+//  PLANTS LIST
+// ══════════════════════════════════════════
+function daysSince(isoStr) {
+  if (!isoStr) return null;
+  return Math.floor((Date.now() - new Date(isoStr).getTime()) / 86400000);
+}
+
+function waterStatus(plant) {
+  const d = daysSince(plant.lastWater);
+  if (d === null) return { cls: 'never', label: '未记录' };
+  const indoor = plant.location === 'indoor';
+  if (d <= (indoor ? 4 : 2)) return { cls: 'ok',     label: d + '天前' };
+  if (d <= (indoor ? 7 : 5)) return { cls: 'warn',   label: d + '天前' };
+  return                            { cls: 'urgent', label: d + '天前' };
+}
+
+function fertStatus(plant) {
+  const d = daysSince(plant.lastFert);
+  if (d === null) return { cls: 'never', label: '未记录' };
+  const cycle = plant.fertCycle || 14;
+  const ratio = d / cycle;
+  if (ratio < 0.8)  return { cls: 'ok',     label: d + '天前' };
+  if (ratio < 1.2)  return { cls: 'warn',   label: d + '天前' };
+  return                    { cls: 'urgent', label: d + '天前' };
+}
+
+function cardUrgency(plant) {
+  const w = waterStatus(plant).cls;
+  const f = fertStatus(plant).cls;
+  if (w === 'urgent' || f === 'urgent') return 'urgent';
+  if (w === 'warn'   || f === 'warn')   return 'warning';
+  return 'ok';
+}
+
+function renderPlants() {
+  const list = document.getElementById('plant-list');
+  const label = document.getElementById('plant-count-label');
+  if (!db.plants.length) {
+    list.innerHTML = `<div class="empty-state"><div class="big-icon">🌱</div><p>还没有添加植物<br>点击右下角 ＋ 开始</p></div>`;
+    label.textContent = '暂无植物';
+    return;
+  }
+  const sorted = [...db.plants].sort((a,b) => {
+    const order = { urgent: 0, warning: 1, ok: 2 };
+    return (order[cardUrgency(a)] - order[cardUrgency(b)]) || a.name.localeCompare(b.name, 'zh');
+  });
+  label.textContent = sorted.length + ' 盆植物';
+  list.innerHTML = sorted.map(p => {
+    const w = waterStatus(p), f = fertStatus(p), urg = cardUrgency(p);
+    return `<div class="plant-card ${urg}" onclick="openDetail('${p.id}')">
+      <div class="card-top">
+        <div>
+          <div class="card-name">${p.name}</div>
+          <div class="card-tags">
+            <span class="tag ${p.location}">${p.location === 'indoor' ? '🏠 室内' : '🌤 室外'}</span>
+          </div>
+        </div>
+      </div>
+      <div class="card-stats">
+        <div class="stat-item">
+          <div class="stat-label">💧 上次浇水</div>
+          <div class="stat-val ${w.cls}">${w.label}</div>
+        </div>
+        <div class="stat-item">
+          <div class="stat-label">🌿 上次施肥</div>
+          <div class="stat-val ${f.cls}">${f.label}</div>
+        </div>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+// ══════════════════════════════════════════
+//  ADD PLANT
+// ══════════════════════════════════════════
+let selectedLoc = 'indoor';
+function openAddPlant() {
+  document.getElementById('add-name').value = '';
+  document.getElementById('add-note').value = '';
+  document.getElementById('add-fert-cycle').value = '14';
+  document.getElementById('custom-cycle-group').style.display = 'none';
+  selectLoc('indoor');
+  openSheet('sheet-add');
+  setTimeout(() => document.getElementById('add-name').focus(), 300);
+}
+function selectLoc(loc) {
+  selectedLoc = loc;
+  document.getElementById('loc-indoor').classList.toggle('selected', loc === 'indoor');
+  document.getElementById('loc-outdoor').classList.toggle('selected', loc === 'outdoor');
+}
+document.getElementById('add-fert-cycle').addEventListener('change', function() {
+  document.getElementById('custom-cycle-group').style.display = this.value === 'custom' ? 'block' : 'none';
+});
+function savePlant() {
+  const name = document.getElementById('add-name').value.trim();
+  if (!name) { showToast('请输入植物名称'); return; }
+  let cycle = parseInt(document.getElementById('add-fert-cycle').value);
+  if (isNaN(cycle)) {
+    cycle = parseInt(document.getElementById('add-custom-cycle').value);
+    if (!cycle || cycle < 1) { showToast('请输入有效天数'); return; }
+  }
+  const plant = {
+    id: genId(), name,
+    location: selectedLoc,
+    fertCycle: cycle,
+    note: document.getElementById('add-note').value.trim(),
+    lastWater: null, lastFert: null,
+    createdAt: new Date().toISOString()
+  };
+  db.plants.push(plant);
+  saveDB();
+  closeSheet('sheet-add');
+  renderPlants();
+  showToast('✓ 已添加 ' + name);
+}
+
+// ══════════════════════════════════════════
+//  DETAIL
+// ══════════════════════════════════════════
+function openDetail(id) {
+  currentPlantId = id;
+  renderDetail();
+  showPage('detail');
+  document.getElementById('tab-plants').classList.add('active');
+}
+
+function renderDetail() {
+  const plant = db.plants.find(p => p.id === currentPlantId);
+  if (!plant) return;
+  const w = waterStatus(plant), f = fertStatus(plant);
+  const logs = db.logs.filter(l => l.plantId === currentPlantId)
+    .sort((a,b) => new Date(b.date) - new Date(a.date));
+
+  document.getElementById('detail-content').innerHTML = `
+    <div class="detail-hero">
+      <div class="detail-name">${plant.name}</div>
+      <div class="card-tags">
+        <span class="tag ${plant.location}">${plant.location === 'indoor' ? '🏠 室内' : '🌤 室外'}</span>
+        <span class="tag">施肥周期 ${plant.fertCycle}天</span>
+      </div>
+      ${plant.note ? `<div style="margin-top:10px;font-size:12px;color:var(--text2);font-style:italic">${plant.note}</div>` : ''}
+      <div class="detail-grid">
+        <div class="detail-stat">
+          <div class="detail-stat-label">💧 上次浇水</div>
+          <div class="detail-stat-val ${w.cls}">${w.label}</div>
+        </div>
+        <div class="detail-stat">
+          <div class="detail-stat-label">🌿 上次施肥</div>
+          <div class="detail-stat-val ${f.cls}">${f.label}</div>
+        </div>
+      </div>
+    </div>
+    <div class="action-row">
+      <button class="action-btn water" onclick="quickLog('water')">
+        <span class="action-icon">💧</span>
+        <span>刚浇水</span>
+      </button>
+      <button class="action-btn fert" onclick="quickLog('fert')">
+        <span class="action-icon">🌿</span>
+        <span>刚施肥</span>
+      </button>
+      <button class="action-btn log-water" onclick="openLog('water')">
+        <span class="action-icon">📅</span>
+        <span>补录浇水</span>
+      </button>
+      <button class="action-btn log-fert" onclick="openLog('fert')">
+        <span class="action-icon">📋</span>
+        <span>补录施肥</span>
+      </button>
+    </div>
+    <div class="log-section">
+      <div class="log-section-title">历史记录</div>
+      <div class="log-list" id="log-list">
+        ${logs.length ? logs.map(l => logItemHTML(l)).join('') : '<div style="color:var(--text3);font-size:13px;padding:8px 0">暂无记录</div>'}
+      </div>
+    </div>`;
+}
+
+function logItemHTML(l) {
+  const d = new Date(l.date);
+  const dateStr = d.toLocaleDateString('zh-CN', {month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit'});
+  return `<div class="log-item">
+    <div class="log-dot ${l.type}"></div>
+    <div class="log-info">
+      <div class="log-type">${l.type === 'water' ? '💧 浇水' : '🌿 施肥'}</div>
+      <div class="log-date">${dateStr}</div>
+      ${l.note ? `<div class="log-note">${l.note}</div>` : ''}
+    </div>
+    <button class="log-del" onclick="deleteLog('${l.id}')">✕</button>
+  </div>`;
+}
+
+function quickLog(type) {
+  const plant = db.plants.find(p => p.id === currentPlantId);
+  if (!plant) return;
+  const now = new Date().toISOString();
+  const log = { id: genId(), plantId: currentPlantId, type, date: now, note: '' };
+  db.logs.push(log);
+  if (type === 'water') plant.lastWater = now;
+  else plant.lastFert = now;
+  saveDB();
+  renderDetail();
+  renderPlants();
+  showToast(type === 'water' ? '💧 浇水已记录' : '🌿 施肥已记录');
+}
+
+function openLog(type) {
+  logType = type;
+  document.getElementById('log-sheet-title').textContent = type === 'water' ? '补录浇水' : '补录施肥';
+  const now = new Date();
+  now.setMinutes(now.getMinutes() - now.getTimezoneOffset());
+  document.getElementById('log-datetime').value = now.toISOString().slice(0,16);
+  document.getElementById('log-note').value = '';
+  openSheet('sheet-log');
+}
+
+function saveLog() {
+  const plant = db.plants.find(p => p.id === currentPlantId);
+  if (!plant) return;
+  const dateVal = document.getElementById('log-datetime').value;
+  if (!dateVal) { showToast('请选择日期时间'); return; }
+  const date = new Date(dateVal).toISOString();
+  const log = { id: genId(), plantId: currentPlantId, type: logType, date, note: document.getElementById('log-note').value.trim() };
+  db.logs.push(log);
+  // update lastWater/lastFert to most recent
+  const typeLogs = db.logs.filter(l => l.plantId === currentPlantId && l.type === logType);
+  const latest = typeLogs.sort((a,b) => new Date(b.date) - new Date(a.date))[0];
+  if (logType === 'water') plant.lastWater = latest.date;
+  else plant.lastFert = latest.date;
+  saveDB();
+  closeSheet('sheet-log');
+  renderDetail();
+  renderPlants();
+  showToast('✓ 记录已保存');
+}
+
+function deleteLog(id) {
+  const idx = db.logs.findIndex(l => l.id === id);
+  if (idx === -1) return;
+  const log = db.logs[idx];
+  db.logs.splice(idx, 1);
+  // recompute lastWater/lastFert
+  const plant = db.plants.find(p => p.id === log.plantId);
+  if (plant) {
+    const wLogs = db.logs.filter(l => l.plantId === plant.id && l.type === 'water').sort((a,b) => new Date(b.date)-new Date(a.date));
+    const fLogs = db.logs.filter(l => l.plantId === plant.id && l.type === 'fert').sort((a,b) => new Date(b.date)-new Date(a.date));
+    plant.lastWater = wLogs[0]?.date || null;
+    plant.lastFert  = fLogs[0]?.date || null;
+  }
+  saveDB();
+  renderDetail();
+  renderPlants();
+}
+
+function deletePlant() {
+  const plant = db.plants.find(p => p.id === currentPlantId);
+  if (!plant) return;
+  showConfirm('删除植物', `确定要删除「${plant.name}」及其所有记录吗？`, () => {
+    db.plants = db.plants.filter(p => p.id !== currentPlantId);
+    db.logs   = db.logs.filter(l => l.plantId !== currentPlantId);
+    saveDB();
+    showPage('plants');
+    showToast('已删除');
+  });
+}
+
+// ══════════════════════════════════════════
+//  LIGHT CALC
+// ══════════════════════════════════════════
+function addCalcRow(name = '') {
+  calcRowCount++;
+  const id = calcRowCount;
+  const container = document.getElementById('calc-rows');
+  const div = document.createElement('div');
+  div.className = 'calc-section';
+  div.id = 'calc-row-' + id;
+  div.innerHTML = `
+    <div class="calc-section-header" style="display:flex;justify-content:space-between;align-items:center">
+      <input style="background:none;border:none;color:var(--text2);font-family:'DM Mono',monospace;font-size:11px;text-transform:uppercase;letter-spacing:.8px;outline:none;flex:1" 
+        placeholder="测量点名称（例：薄荷·近距离）" value="${name}">
+      <button onclick="removeCalcRow(${id})" style="background:none;border:none;color:var(--text3);cursor:pointer;font-size:16px;padding:0 0 0 10px">✕</button>
+    </div>
+    <div style="padding:12px 16px;display:grid;grid-template-columns:1fr auto 1fr auto 1fr auto 1fr;align-items:center;gap:6px">
+      <div class="calc-field">
+        <div class="calc-field-label">LUX</div>
+        <input class="calc-input" type="number" placeholder="0" oninput="recalcRow(${id})" id="lux-${id}">
+      </div>
+      <div class="calc-arrow">→</div>
+      <div class="calc-field">
+        <div class="calc-field-label">PPFD</div>
+        <div class="calc-result" id="ppfd-${id}">—</div>
+      </div>
+      <div class="calc-arrow">×</div>
+      <div class="calc-field">
+        <div class="calc-field-label">小时/天</div>
+        <input class="calc-input" type="number" placeholder="0" min="0" max="24" oninput="recalcRow(${id})" id="hrs-${id}">
+      </div>
+      <div class="calc-arrow">→</div>
+      <div class="calc-field">
+        <div class="calc-field-label">DLI</div>
+        <div class="calc-result calc-dli" id="dli-${id}">—</div>
+      </div>
+    </div>`;
+  container.appendChild(div);
+}
+
+function removeCalcRow(id) {
+  const el = document.getElementById('calc-row-' + id);
+  if (el) el.remove();
+}
+
+function recalcRow(id) {
+  const lux  = parseFloat(document.getElementById('lux-' + id)?.value) || 0;
+  const hrs  = parseFloat(document.getElementById('hrs-' + id)?.value) || 0;
+  const coeff = parseFloat(document.getElementById('coeff-input').value) || 0.0185;
+  const ppfd = lux * coeff;
+  const dli  = ppfd * hrs * 3.6 / 1000;
+  document.getElementById('ppfd-' + id).textContent = ppfd > 0 ? ppfd.toFixed(1) : '—';
+  document.getElementById('dli-'  + id).textContent = dli  > 0 ? dli.toFixed(2)  : '—';
+}
+
+function recalcAll() {
+  for (let i = 1; i <= calcRowCount; i++) {
+    if (document.getElementById('calc-row-' + i)) recalcRow(i);
+  }
+}
+
+// ══════════════════════════════════════════
+//  OUTDOOR DLI CALCULATOR
+// ══════════════════════════════════════════
+// 纽约 40.7°N 各月晴空正午PPFD（μmol/m²/s）
+// 来源：标准太阳模型 Duffie & Beckman，晴空正午GHI × 4.57 μmol/J（PAR转换系数）
+// 典型晴天模式再 ×0.75（参考：dqydj solar calculator 及 Kt文献）
+const NYC_MONTHS = [
+  null,
+  { rise: 7.28, set: 16.97, noonPPFD:  980 }, // 1月
+  { rise: 6.87, set: 17.53, noonPPFD: 1260 }, // 2月
+  { rise: 6.10, set: 18.05, noonPPFD: 1630 }, // 3月
+  { rise: 6.20, set: 19.58, noonPPFD: 1950 }, // 4月
+  { rise: 5.55, set: 20.05, noonPPFD: 2130 }, // 5月
+  { rise: 5.42, set: 20.50, noonPPFD: 2200 }, // 6月
+  { rise: 5.55, set: 20.42, noonPPFD: 2150 }, // 7月
+  { rise: 6.03, set: 19.87, noonPPFD: 2040 }, // 8月
+  { rise: 6.53, set: 19.02, noonPPFD: 1780 }, // 9月
+  { rise: 6.98, set: 18.17, noonPPFD: 1410 }, // 10月
+  { rise: 6.50, set: 16.70, noonPPFD: 1065 }, // 11月
+  { rise: 7.13, set: 16.55, noonPPFD:  910 }, // 12月
+];
+
+// 天气模式
+let skyMode = 'typical';
+
+function setSkyMode(mode) {
+  skyMode = mode;
+  const btnT = document.getElementById('mode-typical');
+  const btnC = document.getElementById('mode-clear');
+  if (mode === 'typical') {
+    btnT.style.background = 'var(--accent)';  btnT.style.color = 'var(--bg)';
+    btnC.style.background = 'transparent';    btnC.style.color = 'var(--text3)';
+  } else {
+    btnC.style.background = 'var(--accent2)'; btnC.style.color = 'var(--bg)';
+    btnT.style.background = 'transparent';    btnT.style.color = 'var(--text3)';
+  }
+  calcOutdoorDLI();
+}
+
+// 正弦积分：对时段 [t1,t2] 内的 PPFD 积分 → DLI (mol/m²)
+function sinIntegrateDLI(noonPPFD, rise, set, t1, t2) {
+  const step = 0.1;
+  let sum = 0;
+  const dayLen = set - rise;
+  for (let t = t1; t < t2; t += step) {
+    const mid = t + step / 2;
+    if (mid <= rise || mid >= set) continue;
+    sum += noonPPFD * Math.sin(Math.PI * (mid - rise) / dayLen) * step;
+  }
+  return sum * 3.6 / 1000;
+}
+
+function timeStrToH(str) {
+  const [h, m] = str.split(':').map(Number);
+  return h + m / 60;
+}
+
+function calcOutdoorDLI() {
+  const month      = parseInt(document.getElementById('od-month').value);
+  const startStr   = document.getElementById('od-start').value;
+  const endStr     = document.getElementById('od-end').value;
+  const diffuseHrs = parseFloat(document.getElementById('od-diffuse-hrs').value) || 0;
+  if (!startStr || !endStr) return;
+
+  const md         = NYC_MONTHS[month];
+  const { rise, set } = md;
+  const modeCoeff  = skyMode === 'typical' ? 0.75 : 1.0;
+  const noonPPFD   = md.noonPPFD * modeCoeff;
+  const modeLabel  = skyMode === 'typical' ? '典型晴天（×0.75）' : '极端晴朗（×1.0）';
+
+  // 日出日落标注
+  const riseH = Math.floor(rise), riseM = Math.round((rise - riseH) * 60);
+  const setH  = Math.floor(set),  setM  = Math.round((set  - setH)  * 60);
+  document.getElementById('od-sunrise-label').textContent =
+    `日出 ${String(riseH).padStart(2,'0')}:${String(riseM).padStart(2,'0')}  日落 ${String(setH).padStart(2,'0')}:${String(setM).padStart(2,'0')}  · 正午参考PPFD ${noonPPFD.toFixed(0)} μmol`;
+
+  const t1 = timeStrToH(startStr);
+  const t2 = timeStrToH(endStr);
+  if (t2 <= t1) { document.getElementById('od-result').style.display = 'none'; return; }
+
+  const directDLI   = sinIntegrateDLI(noonPPFD, rise, set, t1, t2);
+  const directHours = t2 - t1;
+  const diffusePPFD = noonPPFD * 0.05;
+  const diffuseDLI  = diffusePPFD * diffuseHrs * 3.6 / 1000;
+  const totalDLI    = directDLI + diffuseDLI;
+
+  document.getElementById('od-direct-dli').textContent  = directDLI.toFixed(2);
+  document.getElementById('od-diffuse-dli').textContent = diffuseDLI.toFixed(2);
+  document.getElementById('od-total-dli').textContent   = totalDLI.toFixed(2);
+  document.getElementById('od-detail-text').innerHTML =
+    `直射 ${directHours.toFixed(1)}h（${startStr}–${endStr}）· 散射 ${diffuseHrs}h<br>` +
+    `散射PPFD ≈ ${diffusePPFD.toFixed(0)} μmol（正午值5%，保守估算）<br>` +
+    `当前模式：${modeLabel}`;
+  document.getElementById('od-result').style.display = 'block';
+}
+
+// ══════════════════════════════════════════
+//  REFERENCE DATA
+// ══════════════════════════════════════════
+const REF_DATA = [
+  // 耐阴观叶
+  { cat:'耐阴观叶', name:'虎皮兰', eng:'Snake Plant', ppfdMin:50, ppfdRec:100, ppfdSurvive:20, dliMin:1, dliRec:3, fertNote:'春夏每4-6周一次，秋冬停肥，低光照下每年1-2次即可', waterNote:'土壤完全干透后再浇水，宁干勿湿' },
+  { cat:'耐阴观叶', name:'绿萝', eng:'Pothos', ppfdMin:50, ppfdRec:150, ppfdSurvive:20, dliMin:1, dliRec:4, fertNote:'生长季每月一次，秋冬减半', waterNote:'表土2cm干后浇水' },
+  { cat:'耐阴观叶', name:'心叶蔓绿绒', eng:'Heartleaf Philodendron', ppfdMin:50, ppfdRec:200, ppfdSurvive:25, dliMin:1.5, dliRec:5, fertNote:'生长季每月一次', waterNote:'表土干后浇水' },
+  { cat:'耐阴观叶', name:'合果芋', eng:'Arrowhead Plant', ppfdMin:80, ppfdRec:200, ppfdSurvive:30, dliMin:2, dliRec:5, fertNote:'生长季每两周一次', waterNote:'保持土壤微湿' },
+  { cat:'耐阴观叶', name:'白鹤芋', eng:'Peace Lily', ppfdMin:50, ppfdRec:150, ppfdSurvive:20, dliMin:1, dliRec:4, fertNote:'生长季每6-8周一次', waterNote:'见干见湿，叶片略垂再浇' },
+  { cat:'耐阴观叶', name:'吊兰', eng:'Spider Plant', ppfdMin:100, ppfdRec:250, ppfdSurvive:40, dliMin:2, dliRec:6, fertNote:'生长季每月一次', waterNote:'表土干后浇水' },
+  { cat:'耐阴观叶', name:'网纹草', eng:'Fittonia', ppfdMin:100, ppfdRec:200, ppfdSurvive:50, dliMin:2, dliRec:5, fertNote:'生长季每月一次，浓度减半', waterNote:'保持土壤湿润，不耐干旱' },
+  { cat:'耐阴观叶', name:'竹芋', eng:'Calathea', ppfdMin:100, ppfdRec:250, ppfdSurvive:50, dliMin:2, dliRec:6, fertNote:'生长季每月一次，浓度减半', waterNote:'喜湿润，用过滤水或静置水' },
+  // 中光观叶
+  { cat:'中光观叶', name:'发财树', eng:'Money Tree', ppfdMin:200, ppfdRec:400, ppfdSurvive:100, dliMin:4, dliRec:10, fertNote:'生长季每月一次，秋冬停肥', waterNote:'表土2-3cm干透再浇，避免积水' },
+  { cat:'中光观叶', name:'橡皮树', eng:'Rubber Tree', ppfdMin:200, ppfdRec:500, ppfdSurvive:100, dliMin:4, dliRec:12, fertNote:'生长季每月一次', waterNote:'表土干后浇水' },
+  { cat:'中光观叶', name:'琴叶榕', eng:'Fiddle Leaf Fig', ppfdMin:300, ppfdRec:600, ppfdSurvive:150, dliMin:6, dliRec:15, fertNote:'生长季每月一次，冬季停肥', waterNote:'表土3cm干后浇透，避免频繁移动' },
+  { cat:'中光观叶', name:'龟背竹', eng:'Monstera', ppfdMin:200, ppfdRec:400, ppfdSurvive:100, dliMin:4, dliRec:10, fertNote:'生长季每月一次', waterNote:'表土2cm干后浇水' },
+  { cat:'中光观叶', name:'金钱树（ZZ）', eng:'ZZ Plant', ppfdMin:100, ppfdRec:300, ppfdSurvive:50, dliMin:2, dliRec:7, fertNote:'生长季每2-3个月一次，极耐贫', waterNote:'土壤完全干透后再浇，极耐旱' },
+  { cat:'中光观叶', name:'富贵竹', eng:'Lucky Bamboo', ppfdMin:100, ppfdRec:250, ppfdSurvive:50, dliMin:2, dliRec:5, fertNote:'水培每月换水时加一两滴液肥，土培每月一次', waterNote:'水培保持水位，土培保持湿润' },
+  { cat:'中光观叶', name:'鹅掌柴', eng:'Schefflera', ppfdMin:200, ppfdRec:400, ppfdSurvive:100, dliMin:4, dliRec:10, fertNote:'生长季每月一次', waterNote:'表土干后浇水' },
+  { cat:'中光观叶', name:'铁线蕨', eng:'Maidenhair Fern', ppfdMin:100, ppfdRec:250, ppfdSurvive:50, dliMin:2, dliRec:5, fertNote:'生长季每月一次，浓度减半', waterNote:'保持土壤湿润，不耐干旱' },
+  { cat:'中光观叶', name:'春羽', eng:'Philodendron Selloum', ppfdMin:150, ppfdRec:350, ppfdSurvive:80, dliMin:3, dliRec:8, fertNote:'生长季每月一次', waterNote:'表土干后浇水' },
+  // 华人偏爱
+  { cat:'华人偏爱', name:'铜钱草', eng:'Hydrocotyle', ppfdMin:200, ppfdRec:500, ppfdSurvive:100, dliMin:4, dliRec:12, fertNote:'生长季每月一次', waterNote:'喜湿，可水培或保持土壤湿润' },
+  { cat:'华人偏爱', name:'茉莉花', eng:'Jasmine', ppfdMin:400, ppfdRec:800, ppfdSurvive:200, dliMin:8, dliRec:18, fertNote:'花期前每两周一次，以磷钾为主', waterNote:'表土干后浇透，花期保持湿润' },
+  { cat:'华人偏爱', name:'米兰', eng:'Murraya', ppfdMin:400, ppfdRec:700, ppfdSurvive:200, dliMin:8, dliRec:16, fertNote:'生长季每两周一次', waterNote:'保持土壤微湿' },
+  { cat:'华人偏爱', name:'栀子花', eng:'Gardenia', ppfdMin:300, ppfdRec:600, ppfdSurvive:150, dliMin:6, dliRec:14, fertNote:'花期前每两周一次酸性肥', waterNote:'保持湿润，用软水或雨水' },
+  // 多肉仙人掌
+  { cat:'多肉·仙人掌', name:'芦荟', eng:'Aloe Vera', ppfdMin:200, ppfdRec:500, ppfdSurvive:100, dliMin:4, dliRec:12, fertNote:'一年2-3次即可，春夏施', waterNote:'完全干透后再浇，宁干勿湿' },
+  { cat:'多肉·仙人掌', name:'玉露', eng:'Haworthia', ppfdMin:100, ppfdRec:300, ppfdSurvive:50, dliMin:2, dliRec:7, fertNote:'生长季每2-3个月一次，浓度减半', waterNote:'土壤干透后浇水' },
+  { cat:'多肉·仙人掌', name:'蟹爪兰', eng:'Christmas Cactus', ppfdMin:200, ppfdRec:400, ppfdSurvive:100, dliMin:4, dliRec:10, fertNote:'花芽分化前停肥，其余时间每月一次', waterNote:'见干见湿，花期保持湿润' },
+  // 香草蔬菜
+  { cat:'香草·蔬菜', name:'绿薄荷', eng:'Spearmint', ppfdMin:300, ppfdRec:600, ppfdSurvive:150, dliMin:8, dliRec:14, fertNote:'盆栽生长季每月一次，过多施肥降低香味', waterNote:'保持土壤湿润，不耐干旱' },
+  { cat:'香草·蔬菜', name:'罗勒', eng:'Basil', ppfdMin:400, ppfdRec:800, ppfdSurvive:200, dliMin:10, dliRec:16, fertNote:'每两周一次氮肥为主，采摘后施', waterNote:'保持湿润，忌积水' },
+  { cat:'香草·蔬菜', name:'迷迭香', eng:'Rosemary', ppfdMin:400, ppfdRec:800, ppfdSurvive:200, dliMin:10, dliRec:18, fertNote:'生长季每月一次，少肥', waterNote:'土壤干透后浇水，耐旱' },
+  { cat:'香草·蔬菜', name:'韭菜', eng:'Chinese Chives', ppfdMin:300, ppfdRec:600, ppfdSurvive:150, dliMin:8, dliRec:14, fertNote:'每次割后施一次氮肥', waterNote:'保持土壤湿润' },
+  { cat:'香草·蔬菜', name:'香菜', eng:'Cilantro', ppfdMin:300, ppfdRec:500, ppfdSurvive:150, dliMin:6, dliRec:12, fertNote:'每月一次，少量即可', waterNote:'保持湿润，怕热' },
+  { cat:'香草·蔬菜', name:'紫苏', eng:'Perilla', ppfdMin:300, ppfdRec:600, ppfdSurvive:150, dliMin:8, dliRec:14, fertNote:'每两周一次，氮肥为主', waterNote:'保持湿润' },
+  { cat:'香草·蔬菜', name:'西红柿', eng:'Tomato', ppfdMin:400, ppfdRec:800, ppfdSurvive:200, dliMin:12, dliRec:22, fertNote:'幼苗期每两周一次，结果期每7-10天一次，以磷钾为主', waterNote:'均匀浇水，忽干忽湿易裂果' },
+  { cat:'香草·蔬菜', name:'草莓', eng:'Strawberry', ppfdMin:300, ppfdRec:600, ppfdSurvive:150, dliMin:8, dliRec:14, fertNote:'花前和采摘后各施一次，避免春季过度施氮', waterNote:'保持湿润，避免积水' },
+  { cat:'香草·蔬菜', name:'辣椒', eng:'Pepper', ppfdMin:400, ppfdRec:700, ppfdSurvive:200, dliMin:10, dliRec:18, fertNote:'每两周一次，结果期磷钾为主', waterNote:'表土干后浇水' },
+  { cat:'香草·蔬菜', name:'生菜', eng:'Lettuce', ppfdMin:200, ppfdRec:400, ppfdSurvive:100, dliMin:6, dliRec:12, fertNote:'每两周一次氮肥，快速消耗', waterNote:'保持湿润' },
+  // 观花
+  { cat:'观花', name:'非洲紫罗兰', eng:'African Violet', ppfdMin:150, ppfdRec:300, ppfdSurvive:80, dliMin:4, dliRec:8, fertNote:'生长季每两周一次专用肥', waterNote:'底部浇水，叶片不可沾水' },
+  { cat:'观花', name:'长寿花', eng:'Kalanchoe', ppfdMin:200, ppfdRec:500, ppfdSurvive:100, dliMin:6, dliRec:12, fertNote:'花期前每两周一次，花期停肥', waterNote:'土壤干透后浇水' },
+  { cat:'观花', name:'天竺葵', eng:'Geranium', ppfdMin:300, ppfdRec:600, ppfdSurvive:150, dliMin:8, dliRec:14, fertNote:'生长季每两周一次', waterNote:'表土干后浇水' },
+  { cat:'观花', name:'蝴蝶兰', eng:'Phalaenopsis', ppfdMin:100, ppfdRec:250, ppfdSurvive:50, dliMin:3, dliRec:6, fertNote:'生长季每两周一次兰花专用肥，花期停肥', waterNote:'基质干透后浇水，忌积水' },
+];
+
+let refExpanded = {};
+let refGroupExpanded = {};
+
+function renderRef(filter = '') {
+  const groups = {};
+  REF_DATA.forEach(r => {
+    const match = !filter || r.name.includes(filter) || r.eng.toLowerCase().includes(filter.toLowerCase());
+    if (!match) return;
+    if (!groups[r.cat]) groups[r.cat] = [];
+    groups[r.cat].push(r);
+  });
+  const el = document.getElementById('ref-list');
+  if (!Object.keys(groups).length) {
+    el.innerHTML = `<div style="text-align:center;padding:40px;color:var(--text3);font-size:14px">未找到相关植物</div>`;
+    return;
+  }
+  el.innerHTML = Object.entries(groups).map(([cat, items]) => {
+    const open = refGroupExpanded[cat] !== false;
+    return `<div class="ref-group">
+      <div class="ref-group-title" onclick="toggleRefGroup('${cat}')">
+        ${cat} <span>${open ? '▲' : '▼'}</span>
+      </div>
+      <div class="ref-items" id="refgroup-${cat.replace(/·/g,'_')}" style="display:${open?'flex':'none'}">
+        ${items.map(r => refItemHTML(r)).join('')}
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function refItemHTML(r) {
+  const key = r.name;
+  const open = refExpanded[key];
+  return `<div class="ref-item">
+    <div class="ref-item-header" onclick="toggleRef('${key}')">
+      <div>
+        <div class="ref-item-name">${r.name}</div>
+        <div class="ref-item-sub">${r.eng}</div>
+      </div>
+      <span style="color:var(--text3);font-size:12px">${open ? '▲' : '▼'}</span>
+    </div>
+    <div class="ref-item-body ${open ? 'open' : ''}" id="refbody-${key}">
+      <div class="ref-data-grid">
+        <div class="ref-data-cell">
+          <div class="ref-data-label">PPFD 推荐</div>
+          <div class="ref-data-val">${r.ppfdMin}–${r.ppfdRec} μmol</div>
+        </div>
+        <div class="ref-data-cell">
+          <div class="ref-data-label">最低存活 PPFD</div>
+          <div class="ref-data-val">${r.ppfdSurvive} μmol</div>
+        </div>
+        <div class="ref-data-cell">
+          <div class="ref-data-label">DLI 推荐</div>
+          <div class="ref-data-val amber">${r.dliMin}–${r.dliRec} mol/m²</div>
+        </div>
+        <div class="ref-data-cell">
+          <div class="ref-data-label">施肥周期</div>
+          <div class="ref-data-val" style="font-size:11px;color:var(--text2)">${r.fertNote.split('，')[0]}</div>
+        </div>
+      </div>
+      <div class="ref-note">💧 ${r.waterNote}</div>
+      <div class="ref-note" style="margin-top:4px">🌿 ${r.fertNote}</div>
+    </div>
+  </div>`;
+}
+
+function toggleRef(key) {
+  refExpanded[key] = !refExpanded[key];
+  const body = document.getElementById('refbody-' + key);
+  if (body) body.classList.toggle('open', !!refExpanded[key]);
+  const header = body?.previousElementSibling?.querySelector('span:last-child');
+  if (header) header.textContent = refExpanded[key] ? '▲' : '▼';
+}
+
+function toggleRefGroup(cat) {
+  refGroupExpanded[cat] = refGroupExpanded[cat] === false ? true : false;
+  const key = cat.replace(/·/g,'_');
+  const el = document.getElementById('refgroup-' + key);
+  if (el) el.style.display = refGroupExpanded[cat] === false ? 'none' : 'flex';
+}
+
+function filterRef() {
+  renderRef(document.getElementById('ref-search').value.trim());
+}
+
+// ══════════════════════════════════════════
+//  EXPORT / IMPORT
+// ══════════════════════════════════════════
+function exportData() {
+  const json = JSON.stringify(db, null, 2);
+  const blob = new Blob([json], { type: 'application/json' });
+  const url  = URL.createObjectURL(blob);
+  const a    = document.createElement('a');
+  a.href = url;
+  a.download = '植物管家_' + new Date().toISOString().slice(0,10) + '.json';
+  a.click();
+  URL.revokeObjectURL(url);
+  showToast('✓ 数据已导出');
+}
+function triggerImport() { document.getElementById('import-input').click(); }
+function importData(e) {
+  const file = e.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = ev => {
+    try {
+      const data = JSON.parse(ev.target.result);
+      if (!data.plants || !data.logs) throw new Error();
+      showConfirm('导入数据', '这将覆盖当前所有数据，确认吗？', () => {
+        db = data; saveDB(); renderPlants();
+        showToast('✓ 数据已导入');
+      });
+    } catch { showToast('⚠️ 文件格式错误'); }
+  };
+  reader.readAsText(file);
+  e.target.value = '';
+}
+
+// ══════════════════════════════════════════
+//  SHEET HELPERS
+// ══════════════════════════════════════════
+function openSheet(id) {
+  document.getElementById(id).classList.add('open');
+  document.body.style.overflow = 'hidden';
+}
+function closeSheet(id) {
+  document.getElementById(id).classList.remove('open');
+  document.body.style.overflow = '';
+}
+document.querySelectorAll('.overlay').forEach(el => {
+  el.addEventListener('click', e => { if (e.target === el) closeSheet(el.id); });
+});
+
+// ══════════════════════════════════════════
+//  TOAST
+// ══════════════════════════════════════════
+let toastTimer;
+function showToast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => t.classList.remove('show'), 2000);
+}
+
+// ══════════════════════════════════════════
+//  CONFIRM
+// ══════════════════════════════════════════
+function showConfirm(title, msg, cb) {
+  confirmCb = cb;
+  document.getElementById('confirm-title').textContent = title;
+  document.getElementById('confirm-msg').textContent   = msg;
+  document.getElementById('confirm-overlay').classList.add('open');
+}
+function confirmOk()     { document.getElementById('confirm-overlay').classList.remove('open'); if (confirmCb) confirmCb(); confirmCb = null; }
+function confirmCancel() { document.getElementById('confirm-overlay').classList.remove('open'); confirmCb = null; }
+
+// ══════════════════════════════════════════
+//  INIT
+// ══════════════════════════════════════════
+loadDB();
+renderPlants();
+calcOutdoorDLI();
+addCalcRow('绿薄荷·补光灯');
+addCalcRow('发财树·近距离');
+addCalcRow('发财树·远距离');
+showPage('plants');
+</script>
+</body>
+</html>
