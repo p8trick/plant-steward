@@ -49,6 +49,10 @@ self.addEventListener('fetch', function(event) {
   if (event.request.method !== 'GET') return;
   // 跳过非 http 协议（如 chrome-extension）
   if (!event.request.url.startsWith('http')) return;
+  // 🛡️ 隔离防火墙：URL 不包含 plant 关键字（说明是叫号器等其他项目），立刻放行
+  if (!event.request.url.includes('plant')) {
+    return;
+  }
 
   event.respondWith(
     caches.match(event.request).then(function(cached) {
