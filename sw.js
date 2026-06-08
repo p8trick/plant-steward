@@ -11,11 +11,11 @@ const CACHE_NAME = 'plantsteward-v1.7.0'; // ← 每次更新必改这里
 // 如果新增了文件（如新图标），也在这里添加
 const ASSETS = [
   './',
-  './plant-care.html',
+  './index.html',
   './manifest.json',
   './icon-192.png',
   './icon-512.png',
-  './icon-1024.png',
+  './apple-touch-icon.png',
   'https://fonts.googleapis.com/css2?family=Noto+Serif+SC:wght@400;600;700&family=DM+Mono:wght@400;500&display=swap',
 ];
 
