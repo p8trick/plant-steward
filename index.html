@@ -752,7 +752,10 @@ html, body {
   <div class="page" id="page-detail">
     <div class="page-header">
       <button class="btn btn-sm" onclick="showPage('plants')">← 返回</button>
-      <button class="btn btn-sm" style="color:var(--red);border-color:var(--red)" onclick="deletePlant()">删除</button>
+      <div style="display:flex;gap:8px">
+        <button class="btn btn-sm" onclick="openRename()">✏️ 改名</button>
+        <button class="btn btn-sm" style="color:var(--red);border-color:var(--red)" onclick="deletePlant()">删除</button>
+      </div>
     </div>
     <div id="detail-content"></div>
   </div>
@@ -811,6 +814,16 @@ html, body {
           <div style="margin-top:5px;font-size:11px;color:var(--text3);font-family:'DM Mono',monospace">自行估算：天空明亮但无直射的时段，排除遮挡较深的早晚</div>
         </div>
 
+        <!-- 植物光饱和点（可选） -->
+        <div class="form-group" style="margin:0">
+          <label class="form-label">参考植物光饱和点（可选）</label>
+          <select class="form-input form-select" id="od-plant-select" onchange="calcOutdoorDLI()">
+            <option value="">不选择 — 无光饱和点上限</option>
+          </select>
+          <div id="od-sat-hint" style="margin-top:5px;font-size:11px;color:var(--accent2);font-family:'DM Mono',monospace;display:none"></div>
+          <div style="margin-top:5px;font-size:11px;color:var(--text3);font-family:'DM Mono',monospace">不选择时按标准模式计算，所有光照均计入 DLI，无饱和截断</div>
+        </div>
+
         <!-- 结果区 -->
         <div id="od-result" style="display:none">
           <div style="height:1px;background:var(--border);margin:4px 0 12px"></div>
@@ -825,9 +838,17 @@ html, body {
             </div>
           </div>
           <div style="background:rgba(168,200,120,.08);border:1px solid rgba(168,200,120,.3);border-radius:10px;padding:12px 14px;text-align:center">
-            <div style="font-size:10px;color:var(--text3);font-family:'DM Mono',monospace;margin-bottom:4px">合计 DLI（晴天上限）</div>
+            <div style="font-size:10px;color:var(--text3);font-family:'DM Mono',monospace;margin-bottom:4px" id="od-total-label">合计 DLI（晴天上限）</div>
             <div id="od-total-dli" style="font-size:24px;font-family:'DM Mono',monospace;font-weight:500;color:var(--accent)">—</div>
             <div style="font-size:10px;color:var(--text3);margin-top:2px">mol/m²/day</div>
+          </div>
+          <!-- 植物模式：有效DLI对比 -->
+          <div id="od-effective-row" style="display:none;margin-top:8px;background:rgba(212,168,83,.08);border:1px solid rgba(212,168,83,.3);border-radius:10px;padding:10px 14px">
+            <div style="font-size:10px;color:var(--text3);font-family:'DM Mono',monospace;margin-bottom:3px">🌿 有效 DLI（截断光饱和点后）</div>
+            <div style="display:flex;align-items:baseline;gap:8px">
+              <div id="od-effective-dli" style="font-size:20px;font-family:'DM Mono',monospace;font-weight:500;color:var(--accent2)">—</div>
+              <div id="od-sat-compare" style="font-size:11px;color:var(--text3)"></div>
+            </div>
           </div>
           <div id="od-detail-text" style="margin-top:10px;font-size:11px;color:var(--text3);font-family:'DM Mono',monospace;line-height:1.8"></div>
         </div>
@@ -947,6 +968,12 @@ html, body {
       </div>
       <!-- 已选植物展示 -->
       <div id="selected-plant-hint" style="display:none;background:rgba(168,200,120,.08);border:1px solid rgba(168,200,120,.3);border-radius:10px;padding:10px 14px;margin-bottom:12px;font-size:13px;color:var(--accent)"></div>
+      <!-- 个性化昵称 -->
+      <div class="form-group" id="nickname-group" style="display:none">
+        <label class="form-label">个性化昵称（可选）</label>
+        <input class="form-input" id="add-nickname" placeholder="例：阳台薄荷、客厅绿萝">
+        <div style="margin-top:5px;font-size:11px;color:var(--text3);font-family:'DM Mono',monospace">留空则使用参考库名称显示</div>
+      </div>
       <div class="form-group">
         <label class="form-label">位置</label>
         <div class="radio-group">
@@ -1056,7 +1083,7 @@ html, body {
     <div class="sheet-header">
       <div>
         <div class="sheet-title">⚙️ 设置</div>
-        <div style="font-size:10px;color:var(--text3);font-family:'DM Mono',monospace;margin-top:2px">PlantSteward v1.7.2</div>
+        <div style="font-size:10px;color:var(--text3);font-family:'DM Mono',monospace;margin-top:2px">PlantSteward v1.8.0</div>
       </div>
       <button class="btn btn-sm" onclick="closeSheet('sheet-settings')">关闭</button>
     </div>
@@ -1086,6 +1113,25 @@ html, body {
           <div style="font-size:11px;color:var(--text3);margin-top:3px">覆盖当前所有数据</div>
         </button>
       </div>
+    </div>
+  </div>
+</div>
+
+<!-- ══ SHEET: 修改名称 ══ -->
+<div class="overlay" id="sheet-rename">
+  <div class="sheet">
+    <div class="sheet-handle"></div>
+    <div class="sheet-header">
+      <div class="sheet-title">✏️ 修改显示名称</div>
+      <button class="btn btn-sm" onclick="closeSheet('sheet-rename')">关闭</button>
+    </div>
+    <div class="sheet-body">
+      <div class="form-group">
+        <label class="form-label">显示名称</label>
+        <input class="form-input" id="rename-input" placeholder="输入个性化名称">
+        <div id="rename-refname" style="margin-top:5px;font-size:11px;color:var(--text3);font-family:'DM Mono',monospace"></div>
+      </div>
+      <button class="btn btn-accent" style="width:100%;padding:14px" onclick="saveRename()">保存</button>
     </div>
   </div>
 </div>
@@ -1347,10 +1393,13 @@ function selectRefPlant(name) {
   const fertMap = { moisture:14, normal:14, drought:45, herb:7, succulent:45 };
   document.getElementById('add-fert-cycle').value = String(fertMap[r.waterType] || 14);
   document.getElementById('water-type-group').style.display = 'none';
+  // 显示昵称输入框，预填参考库名
+  document.getElementById('nickname-group').style.display = 'block';
+  document.getElementById('add-nickname').placeholder = r.name + '（留空使用此名）';
+  document.getElementById('add-nickname').value = '';
   const hint = document.getElementById('selected-plant-hint');
   hint.style.display = 'block';
-  hint.textContent   = `✓ 已选「${r.name}」· 当前季节推荐每 ${days} 天浇水`;
-  // 滚动到底部方便填备注
+  hint.textContent   = '✓ 已关联「' + r.name + '」· 当前季节推荐每 ' + days + ' 天浇水';
   document.querySelector('#sheet-add .sheet-body').scrollTo({ top: 999, behavior: 'smooth' });
 }
 
@@ -1359,13 +1408,15 @@ function openAddPlant() {
   addMode = 'pick';
   document.getElementById('mode-pick').classList.add('selected');
   document.getElementById('mode-custom').classList.remove('selected');
-  document.getElementById('pick-group').style.display   = 'block';
-  document.getElementById('custom-group').style.display = 'none';
-  document.getElementById('pick-search').value          = '';
+  document.getElementById('pick-group').style.display        = 'block';
+  document.getElementById('custom-group').style.display      = 'none';
+  document.getElementById('pick-search').value               = '';
   document.getElementById('selected-plant-hint').style.display = 'none';
-  document.getElementById('water-type-group').style.display    = 'block';
-  document.getElementById('add-fert-cycle').value  = '14';
-  document.getElementById('custom-cycle-group').style.display  = 'none';
+  document.getElementById('nickname-group').style.display    = 'none';
+  document.getElementById('add-nickname').value              = '';
+  document.getElementById('water-type-group').style.display  = 'block';
+  document.getElementById('add-fert-cycle').value            = '14';
+  document.getElementById('custom-cycle-group').style.display = 'none';
   document.getElementById('add-note').value = '';
   selectLoc('indoor');
   renderPickList('');
@@ -1423,13 +1474,17 @@ document.getElementById('add-fert-cycle').addEventListener('change', function() 
 });
 
 function savePlant() {
-  let name = '';
+  let displayName = '';
+  let refName = '';
   if (addMode === 'pick') {
     if (!matchedRefPlant) { showToast('请先从参考库选择植物'); return; }
-    name = matchedRefPlant.name;
+    refName     = matchedRefPlant.name;
+    const nick  = document.getElementById('add-nickname').value.trim();
+    displayName = nick || refName; // 留空则用参考库名
   } else {
-    name = (document.getElementById('add-name')?.value || '').trim();
-    if (!name) { showToast('请输入植物名称'); return; }
+    displayName = (document.getElementById('add-name')?.value || '').trim();
+    if (!displayName) { showToast('请输入植物名称'); return; }
+    refName = displayName; // 自定义模式无关联
   }
 
   let cycle = parseInt(document.getElementById('add-fert-cycle').value);
@@ -1449,7 +1504,9 @@ function savePlant() {
   }
 
   const plant = {
-    id: genId(), name,
+    id: genId(),
+    name:    displayName,  // 显示名（卡片上看到的）
+    refName: refName,      // 参考库关联名（用于数据匹配）
     location: selectedLoc,
     fertCycle: cycle,
     waterType, waterCycle,
@@ -1461,7 +1518,7 @@ function savePlant() {
   saveDB();
   closeSheet('sheet-add');
   renderPlants();
-  showToast('✓ 已添加 ' + name);
+  showToast('✓ 已添加 ' + displayName);
 }
 
 // ══════════════════════════════════════════
@@ -1895,6 +1952,31 @@ function deleteLog(id) {
   renderPlants();
 }
 
+// ── 修改显示名称
+function openRename() {
+  const plant = db.plants.find(p => p.id === currentPlantId);
+  if (!plant) return;
+  document.getElementById('rename-input').value = plant.name;
+  const refName = plant.refName && plant.refName !== plant.name ? plant.refName : null;
+  const hint = document.getElementById('rename-refname');
+  hint.textContent = refName ? '关联参考库：' + refName : '';
+  openSheet('sheet-rename');
+  setTimeout(function(){ document.getElementById('rename-input').focus(); }, 300);
+}
+
+function saveRename() {
+  const plant = db.plants.find(p => p.id === currentPlantId);
+  if (!plant) return;
+  const newName = document.getElementById('rename-input').value.trim();
+  if (!newName) { showToast('名称不能为空'); return; }
+  plant.name = newName;
+  saveDB();
+  closeSheet('sheet-rename');
+  renderDetail();
+  renderPlants();
+  showToast('✓ 名称已更新');
+}
+
 function deletePlant() {
   const plant = db.plants.find(p => p.id === currentPlantId);
   if (!plant) return;
@@ -2095,15 +2177,39 @@ function setSkyMode(mode) {
   calcOutdoorDLI();
 }
 
-// 正弦积分：对时段 [t1,t2] 内的 PPFD 积分 → DLI (mol/m²)
-function sinIntegrateDLI(noonPPFD, rise, set, t1, t2) {
+function populatePlantSelect() {
+  const sel = document.getElementById('od-plant-select');
+  if (sel.options.length > 1) return;
+  const groups = {};
+  REF_DATA.forEach(function(r) {
+    if (!groups[r.cat]) groups[r.cat] = [];
+    groups[r.cat].push(r);
+  });
+  Object.entries(groups).forEach(function(entry) {
+    var cat = entry[0], plants = entry[1];
+    var og = document.createElement('optgroup');
+    og.label = cat;
+    plants.forEach(function(r) {
+      var opt = document.createElement('option');
+      opt.value = r.name;
+      opt.textContent = r.name + '（饱和点 ' + r.ppfdSat + ' μmol）';
+      og.appendChild(opt);
+    });
+    sel.appendChild(og);
+  });
+}
+
+// 正弦积分（带光饱和点截断）
+function sinIntegrateDLI(noonPPFD, rise, set, t1, t2, satPPFD) {
   const step = 0.1;
   let sum = 0;
   const dayLen = set - rise;
   for (let t = t1; t < t2; t += step) {
     const mid = t + step / 2;
     if (mid <= rise || mid >= set) continue;
-    sum += noonPPFD * Math.sin(Math.PI * (mid - rise) / dayLen) * step;
+    let ppfd = noonPPFD * Math.sin(Math.PI * (mid - rise) / dayLen);
+    if (satPPFD && ppfd > satPPFD) ppfd = satPPFD; // 截断光饱和点
+    sum += ppfd * step;
   }
   return sum * 3.6 / 1000;
 }
@@ -2130,13 +2236,36 @@ function calcOutdoorDLI() {
   const riseH = Math.floor(rise), riseM = Math.round((rise - riseH) * 60);
   const setH  = Math.floor(set),  setM  = Math.round((set  - setH)  * 60);
   document.getElementById('od-sunrise-label').textContent =
-    `日出 ${String(riseH).padStart(2,'0')}:${String(riseM).padStart(2,'0')}  日落 ${String(setH).padStart(2,'0')}:${String(setM).padStart(2,'0')}  · 正午参考PPFD ${noonPPFD.toFixed(0)} μmol`;
+    '日出 ' + String(riseH).padStart(2,'0') + ':' + String(riseM).padStart(2,'0') +
+    '  日落 ' + String(setH).padStart(2,'0') + ':' + String(setM).padStart(2,'0') +
+    '  · 正午参考PPFD ' + noonPPFD.toFixed(0) + ' μmol';
 
   const t1 = timeStrToH(startStr);
   const t2 = timeStrToH(endStr);
   if (t2 <= t1) { document.getElementById('od-result').style.display = 'none'; return; }
 
-  const directDLI   = sinIntegrateDLI(noonPPFD, rise, set, t1, t2);
+  // 获取选择的植物光饱和点
+  const sel = document.getElementById('od-plant-select');
+  const selectedPlantName = sel ? sel.value : '';
+  let satPPFD = null;
+  const satHint = document.getElementById('od-sat-hint');
+  const totalLabel = document.getElementById('od-total-label');
+
+  if (selectedPlantName) {
+    const ref = REF_DATA.find(function(r){ return r.name === selectedPlantName; });
+    if (ref) {
+      satPPFD = ref.ppfdSat;
+      satHint.textContent = selectedPlantName + ' 光饱和点 ' + satPPFD + ' μmol · 超出部分不计入有效 DLI';
+      satHint.style.display = 'block';
+      totalLabel.textContent = '总 DLI（含超饱和部分）';
+    }
+  } else {
+    satHint.style.display = 'none';
+    totalLabel.textContent = '合计 DLI（晴天上限）';
+  }
+
+  // 标准 DLI（无截断）
+  const directDLI   = sinIntegrateDLI(noonPPFD, rise, set, t1, t2, null);
   const directHours = t2 - t1;
   const diffusePPFD = noonPPFD * 0.05;
   const diffuseDLI  = diffusePPFD * diffuseHrs * 3.6 / 1000;
@@ -2145,10 +2274,27 @@ function calcOutdoorDLI() {
   document.getElementById('od-direct-dli').textContent  = directDLI.toFixed(2);
   document.getElementById('od-diffuse-dli').textContent = diffuseDLI.toFixed(2);
   document.getElementById('od-total-dli').textContent   = totalDLI.toFixed(2);
+
+  // 有效 DLI（截断光饱和点，仅植物已选时显示）
+  const effRow = document.getElementById('od-effective-row');
+  if (satPPFD && selectedPlantName) {
+    const effDirectDLI = sinIntegrateDLI(noonPPFD, rise, set, t1, t2, satPPFD);
+    const effDiffPPFD  = Math.min(diffusePPFD, satPPFD);
+    const effDiffDLI   = effDiffPPFD * diffuseHrs * 3.6 / 1000;
+    const effTotalDLI  = effDirectDLI + effDiffDLI;
+    const wasted       = (totalDLI - effTotalDLI).toFixed(2);
+    document.getElementById('od-effective-dli').textContent = effTotalDLI.toFixed(2);
+    document.getElementById('od-sat-compare').textContent   =
+      'mol/m²  · 超饱和损耗 ' + wasted + ' mol';
+    effRow.style.display = 'block';
+  } else {
+    effRow.style.display = 'none';
+  }
+
   document.getElementById('od-detail-text').innerHTML =
-    `直射 ${directHours.toFixed(1)}h（${startStr}–${endStr}）· 散射 ${diffuseHrs}h<br>` +
-    `散射PPFD ≈ ${diffusePPFD.toFixed(0)} μmol（正午值5%，保守估算）<br>` +
-    `当前模式：${modeLabel}`;
+    '直射 ' + directHours.toFixed(1) + 'h（' + startStr + '–' + endStr + '）· 散射 ' + diffuseHrs + 'h<br>' +
+    '散射PPFD ≈ ' + diffusePPFD.toFixed(0) + ' μmol（正午值5%，保守估算）<br>' +
+    '当前模式：' + modeLabel;
   document.getElementById('od-result').style.display = 'block';
 }
 
@@ -3022,6 +3168,7 @@ try {
   if (typeof loadTheme === 'function') loadTheme();
   renderPlants();
   calcOutdoorDLI();
+  populatePlantSelect();
   addCalcRow('绿薄荷·补光灯');
   addCalcRow('发财树·近距离');
   addCalcRow('发财树·远距离');
