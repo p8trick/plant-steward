@@ -712,6 +712,28 @@ html, body {
 
   <!-- ══ PAGE: 我的植物 ══ -->
   <div class="page active" id="page-plants">
+    <!-- 日期栏 -->
+    <div id="date-bar" style="
+      background:var(--bg2);
+      border-bottom:1px solid var(--border);
+      padding:7px 20px;
+      display:flex;
+      align-items:center;
+      justify-content:space-between">
+      <div id="date-bar-text" style="font-size:12px;color:var(--text2);font-family:'DM Mono',monospace;letter-spacing:.3px"></div>
+      <div id="season-badge" style="font-size:11px;padding:2px 10px;border-radius:20px;border:1px solid var(--border);color:var(--text2)"></div>
+    </div>
+    <!-- 天气栏 -->
+    <div id="weather-bar" style="display:none;background:var(--bg2);border-bottom:1px solid var(--border);padding:7px 20px">
+      <div style="display:flex;align-items:center;justify-content:space-between">
+        <div style="display:flex;gap:16px;align-items:center">
+          <span style="font-size:11px;color:var(--text3);font-family:'DM Mono',monospace">📍 纽约</span>
+          <span id="weather-today" style="font-size:12px;font-family:'DM Mono',monospace;color:var(--text2)"></span>
+          <span id="weather-tomorrow" style="font-size:12px;font-family:'DM Mono',monospace;color:var(--text3)"></span>
+        </div>
+        <span id="weather-status" style="font-size:10px;color:var(--text3);font-family:'DM Mono',monospace"></span>
+      </div>
+    </div>
     <div class="page-header">
       <div>
         <div class="page-title">🌿 我的植物</div>
@@ -1083,7 +1105,7 @@ html, body {
     <div class="sheet-header">
       <div>
         <div class="sheet-title">⚙️ 设置</div>
-        <div style="font-size:10px;color:var(--text3);font-family:'DM Mono',monospace;margin-top:2px">PlantSteward v1.8.0</div>
+        <div style="font-size:10px;color:var(--text3);font-family:'DM Mono',monospace;margin-top:2px">PlantSteward v1.9.1</div>
       </div>
       <button class="btn btn-sm" onclick="closeSheet('sheet-settings')">关闭</button>
     </div>
@@ -1117,12 +1139,12 @@ html, body {
   </div>
 </div>
 
-<!-- ══ SHEET: 修改名称 ══ -->
+<!-- ══ SHEET: 修改植物信息 ══ -->
 <div class="overlay" id="sheet-rename">
   <div class="sheet">
     <div class="sheet-handle"></div>
     <div class="sheet-header">
-      <div class="sheet-title">✏️ 修改显示名称</div>
+      <div class="sheet-title">✏️ 修改植物信息</div>
       <button class="btn btn-sm" onclick="closeSheet('sheet-rename')">关闭</button>
     </div>
     <div class="sheet-body">
@@ -1130,6 +1152,14 @@ html, body {
         <label class="form-label">显示名称</label>
         <input class="form-input" id="rename-input" placeholder="输入个性化名称">
         <div id="rename-refname" style="margin-top:5px;font-size:11px;color:var(--text3);font-family:'DM Mono',monospace"></div>
+      </div>
+      <div class="form-group">
+        <label class="form-label">位置</label>
+        <div class="radio-group">
+          <div class="radio-btn" id="rename-loc-indoor" onclick="selectRenameLoc('indoor')">🏠 室内</div>
+          <div class="radio-btn" id="rename-loc-outdoor" onclick="selectRenameLoc('outdoor')">🌤 室外</div>
+        </div>
+        <div id="rename-water-hint" style="margin-top:8px;font-size:11px;color:var(--accent);font-family:'DM Mono',monospace"></div>
       </div>
       <button class="btn btn-accent" style="width:100%;padding:14px" onclick="saveRename()">保存</button>
     </div>
@@ -1201,7 +1231,8 @@ let calcRowCount = 0;
 function loadDB() {
   try { db = JSON.parse(localStorage.getItem('plantcare_db') || 'null') || { plants: [], logs: [], notes: [] }; }
   catch(e) { db = { plants: [], logs: [], notes: [] }; }
-  if (!db.notes) db.notes = [];
+  if (!db.notes)   db.notes   = [];
+  if (!db.weather) db.weather = null;
 }
 function saveDB() { localStorage.setItem('plantcare_db', JSON.stringify(db)); }
 function genId() { return Date.now().toString(36) + Math.random().toString(36).slice(2,6); }
@@ -1306,6 +1337,7 @@ function renderPlants() {
     const w = waterStatus(p), f = fertStatus(p), urg = cardUrgency(p);
     const needsSetup = !p.waterCycle && !p.waterType;
     const cycle = needsSetup ? null : getWaterCycle(p);
+    const tempWarn = getTempWarning(p);
     return `<div class="plant-card ${urg}" onclick="openDetail('${p.id}')">
       <div class="card-top">
         <div>
@@ -1314,6 +1346,7 @@ function renderPlants() {
             <span class="tag ${p.location}">${p.location === 'indoor' ? '🏠 室内' : '🌤 室外'}</span>
             ${needsSetup ? '<span class="tag" style="border-color:var(--yellow);color:var(--yellow)">⚠️ 请重新添加</span>' : '<span class="tag">💧 每' + cycle + '天</span>'}
           </div>
+          ${tempWarn}
         </div>
       </div>
       <div class="card-stats">
@@ -1468,10 +1501,6 @@ function selectLoc(loc) {
   // 重新触发匹配提示以更新天数
   if (matchedRefPlant) onNameInput();
 }
-
-document.getElementById('add-fert-cycle').addEventListener('change', function() {
-  document.getElementById('custom-cycle-group').style.display = this.value === 'custom' ? 'block' : 'none';
-});
 
 function savePlant() {
   let displayName = '';
@@ -1952,14 +1981,40 @@ function deleteLog(id) {
   renderPlants();
 }
 
-// ── 修改显示名称
+// ── 修改植物信息（名称 + 位置）
+let renameSelectedLoc = 'indoor';
+
+function selectRenameLoc(loc) {
+  renameSelectedLoc = loc;
+  document.getElementById('rename-loc-indoor').classList.toggle('selected',  loc === 'indoor');
+  document.getElementById('rename-loc-outdoor').classList.toggle('selected', loc === 'outdoor');
+  // 动态更新浇水提示
+  const plant = db.plants.find(p => p.id === currentPlantId);
+  if (plant) {
+    const tempPlant = Object.assign({}, plant, { location: loc });
+    const cycle = getWaterCycle(tempPlant);
+    const season = isSummer() ? '春夏' : '秋冬';
+    document.getElementById('rename-water-hint').textContent =
+      '移至此位置后推荐每 ' + cycle + ' 天浇水（' + season + '）';
+  }
+}
+
 function openRename() {
   const plant = db.plants.find(p => p.id === currentPlantId);
   if (!plant) return;
+  renameSelectedLoc = plant.location;
   document.getElementById('rename-input').value = plant.name;
+  // 显示参考库关联
   const refName = plant.refName && plant.refName !== plant.name ? plant.refName : null;
-  const hint = document.getElementById('rename-refname');
-  hint.textContent = refName ? '关联参考库：' + refName : '';
+  document.getElementById('rename-refname').textContent = refName ? '关联参考库：' + refName : '';
+  // 设置位置按钮
+  document.getElementById('rename-loc-indoor').classList.toggle('selected',  plant.location === 'indoor');
+  document.getElementById('rename-loc-outdoor').classList.toggle('selected', plant.location === 'outdoor');
+  // 显示当前浇水周期
+  const cycle  = getWaterCycle(plant);
+  const season = isSummer() ? '春夏' : '秋冬';
+  document.getElementById('rename-water-hint').textContent =
+    '当前推荐每 ' + cycle + ' 天浇水（' + season + '）';
   openSheet('sheet-rename');
   setTimeout(function(){ document.getElementById('rename-input').focus(); }, 300);
 }
@@ -1969,12 +2024,21 @@ function saveRename() {
   if (!plant) return;
   const newName = document.getElementById('rename-input').value.trim();
   if (!newName) { showToast('名称不能为空'); return; }
-  plant.name = newName;
+  const oldLoc  = plant.location;
+  plant.name     = newName;
+  plant.location = renameSelectedLoc;
   saveDB();
   closeSheet('sheet-rename');
   renderDetail();
   renderPlants();
-  showToast('✓ 名称已更新');
+  // 位置变了时给出提示
+  if (oldLoc !== renameSelectedLoc) {
+    const newCycle = getWaterCycle(plant);
+    const label    = renameSelectedLoc === 'indoor' ? '已移入室内' : '已移至室外';
+    showToast(label + ' · 浇水周期更新为每 ' + newCycle + ' 天');
+  } else {
+    showToast('✓ 信息已更新');
+  }
 }
 
 function deletePlant() {
@@ -2300,64 +2364,71 @@ function calcOutdoorDLI() {
 
 // ══════════════════════════════════════════
 //  REFERENCE DATA
-//  光照三段：ppfdComp=光补偿点, ppfdRec=推荐范围[min,max], ppfdSat=光饱和点
-//  DLI三段：dliMin=最低存活, dliRec=推荐, dliSat=饱和点
-//  浇水：waterType + 四季天数 {ii=室内春夏, iw=室内秋冬, oi=室外春夏, ow=室外秋冬}
+//  tempMin/Cool/Warm/Max: 华氏度四节点
+//  dataSrc: 'v'=文献verified, 'e'=同科属estimated推算（光照+温度整体）
 // ══════════════════════════════════════════
 const REF_DATA = [
   // ── 耐阴观叶
   { cat:'耐阴观叶', name:'虎皮兰', eng:'Snake Plant',
     ppfdComp:10, ppfdMin:30, ppfdRec:100, ppfdSat:400,
-    dliMin:0.5, dliRec:2, dliSat:6,
+    dliMin:0.5, dliRec:2, dliSat:6, dataSrc:'v',
+    tempMin:40, tempCool:60, tempWarm:85, tempMax:100,
     waterType:'drought', wii:14, wiw:28, woi:10, wow:21,
     fertNote:'春夏每4-6周一次，秋冬停肥，低光照下每年1-2次即可',
     waterNote:'土壤完全干透后再浇，宁干勿湿，过度浇水是主要死因' },
 
   { cat:'耐阴观叶', name:'绿萝', eng:'Pothos',
     ppfdComp:15, ppfdMin:50, ppfdRec:150, ppfdSat:500,
-    dliMin:1, dliRec:4, dliSat:10,
+    dliMin:1, dliRec:4, dliSat:10, dataSrc:'v',
+    tempMin:45, tempCool:65, tempWarm:85, tempMax:95,
     waterType:'normal', wii:7, wiw:12, woi:5, wow:9,
     fertNote:'生长季每月一次，秋冬减半',
     waterNote:'表土2cm干后浇透，耐旱能力强' },
 
   { cat:'耐阴观叶', name:'心叶蔓绿绒', eng:'Heartleaf Philodendron',
     ppfdComp:15, ppfdMin:50, ppfdRec:200, ppfdSat:500,
-    dliMin:1, dliRec:5, dliSat:10,
+    dliMin:1, dliRec:5, dliSat:10, dataSrc:'v',
+    tempMin:50, tempCool:65, tempWarm:85, tempMax:95,
     waterType:'normal', wii:7, wiw:12, woi:5, wow:9,
     fertNote:'生长季每月一次',
     waterNote:'表土干后浇透，避免积水' },
 
   { cat:'耐阴观叶', name:'合果芋', eng:'Arrowhead Plant',
     ppfdComp:20, ppfdMin:80, ppfdRec:200, ppfdSat:600,
-    dliMin:2, dliRec:5, dliSat:12,
+    dliMin:2, dliRec:5, dliSat:12, dataSrc:'e',
+    tempMin:50, tempCool:65, tempWarm:85, tempMax:95,
     waterType:'moisture', wii:5, wiw:8, woi:3, wow:6,
     fertNote:'生长季每两周一次',
     waterNote:'保持土壤微湿，不耐长期干旱' },
 
   { cat:'耐阴观叶', name:'白鹤芋', eng:'Peace Lily',
     ppfdComp:15, ppfdMin:50, ppfdRec:150, ppfdSat:400,
-    dliMin:1, dliRec:4, dliSat:8,
+    dliMin:1, dliRec:4, dliSat:8, dataSrc:'v',
+    tempMin:45, tempCool:65, tempWarm:85, tempMax:95,
     waterType:'moisture', wii:5, wiw:8, woi:3, wow:6,
     fertNote:'生长季每6-8周一次',
     waterNote:'叶片微垂时浇水，用过滤水，叶片对氟敏感' },
 
   { cat:'耐阴观叶', name:'吊兰', eng:'Spider Plant',
     ppfdComp:20, ppfdMin:80, ppfdRec:250, ppfdSat:700,
-    dliMin:2, dliRec:6, dliSat:14,
+    dliMin:2, dliRec:6, dliSat:14, dataSrc:'v',
+    tempMin:35, tempCool:60, tempWarm:80, tempMax:90,
     waterType:'normal', wii:7, wiw:12, woi:5, wow:9,
     fertNote:'生长季每月一次',
     waterNote:'表土干后浇透，较耐旱' },
 
   { cat:'耐阴观叶', name:'网纹草', eng:'Fittonia',
     ppfdComp:20, ppfdMin:80, ppfdRec:200, ppfdSat:500,
-    dliMin:2, dliRec:5, dliSat:10,
+    dliMin:2, dliRec:5, dliSat:10, dataSrc:'e',
+    tempMin:55, tempCool:65, tempWarm:80, tempMax:90,
     waterType:'moisture', wii:4, wiw:6, woi:3, wow:5,
     fertNote:'生长季每月一次，浓度减半',
     waterNote:'极不耐旱，土壤始终保持湿润，缺水叶片迅速萎蔫' },
 
   { cat:'耐阴观叶', name:'竹芋', eng:'Calathea',
     ppfdComp:20, ppfdMin:80, ppfdRec:250, ppfdSat:600,
-    dliMin:2, dliRec:6, dliSat:12,
+    dliMin:2, dliRec:6, dliSat:12, dataSrc:'v',
+    tempMin:55, tempCool:65, tempWarm:80, tempMax:90,
     waterType:'moisture', wii:4, wiw:7, woi:3, wow:5,
     fertNote:'生长季每月一次，浓度减半',
     waterNote:'喜湿润，必须用过滤水或静置水，对氯和氟极敏感' },
@@ -2365,63 +2436,72 @@ const REF_DATA = [
   // ── 中光观叶
   { cat:'中光观叶', name:'发财树', eng:'Money Tree',
     ppfdComp:30, ppfdMin:150, ppfdRec:400, ppfdSat:800,
-    dliMin:3, dliRec:10, dliSat:18,
+    dliMin:3, dliRec:10, dliSat:18, dataSrc:'v',
+    tempMin:45, tempCool:65, tempWarm:85, tempMax:95,
     waterType:'normal', wii:8, wiw:14, woi:5, wow:10,
     fertNote:'生长季每月一次，秋冬停肥',
     waterNote:'表土2-3cm干透再浇，盆底不可积水' },
 
   { cat:'中光观叶', name:'橡皮树', eng:'Rubber Tree',
     ppfdComp:30, ppfdMin:150, ppfdRec:500, ppfdSat:1000,
-    dliMin:3, dliRec:12, dliSat:20,
+    dliMin:3, dliRec:12, dliSat:20, dataSrc:'v',
+    tempMin:50, tempCool:60, tempWarm:85, tempMax:95,
     waterType:'normal', wii:7, wiw:12, woi:5, wow:9,
     fertNote:'生长季每月一次',
     waterNote:'表土干后浇透，叶片定期擦拭提升光合效率' },
 
   { cat:'中光观叶', name:'琴叶榕', eng:'Fiddle Leaf Fig',
     ppfdComp:50, ppfdMin:200, ppfdRec:600, ppfdSat:1200,
-    dliMin:5, dliRec:15, dliSat:25,
+    dliMin:5, dliRec:15, dliSat:25, dataSrc:'v',
+    tempMin:55, tempCool:65, tempWarm:85, tempMax:95,
     waterType:'normal', wii:7, wiw:14, woi:5, wow:10,
     fertNote:'生长季每月一次，冬季停肥',
     waterNote:'表土3cm干后浇透，忌频繁移动，位置不稳易落叶' },
 
   { cat:'中光观叶', name:'龟背竹', eng:'Monstera',
     ppfdComp:25, ppfdMin:100, ppfdRec:400, ppfdSat:900,
-    dliMin:2, dliRec:10, dliSat:18,
+    dliMin:2, dliRec:10, dliSat:18, dataSrc:'v',
+    tempMin:50, tempCool:65, tempWarm:85, tempMax:95,
     waterType:'normal', wii:7, wiw:12, woi:5, wow:9,
     fertNote:'生长季每月一次',
     waterNote:'表土2cm干后浇水，叶片出现黄边通常为过浇' },
 
   { cat:'中光观叶', name:'金钱树（ZZ）', eng:'ZZ Plant',
     ppfdComp:10, ppfdMin:50, ppfdRec:300, ppfdSat:600,
-    dliMin:1, dliRec:7, dliSat:14,
+    dliMin:1, dliRec:7, dliSat:14, dataSrc:'v',
+    tempMin:45, tempCool:60, tempWarm:80, tempMax:90,
     waterType:'drought', wii:14, wiw:28, woi:10, wow:21,
     fertNote:'生长季每2-3个月一次，极耐贫瘠',
     waterNote:'土壤完全干透再浇，块茎储水能力极强，过浇必烂根' },
 
   { cat:'中光观叶', name:'富贵竹', eng:'Lucky Bamboo',
     ppfdComp:20, ppfdMin:80, ppfdRec:250, ppfdSat:600,
-    dliMin:2, dliRec:5, dliSat:10,
+    dliMin:2, dliRec:5, dliSat:10, dataSrc:'e',
+    tempMin:55, tempCool:65, tempWarm:90, tempMax:100,
     waterType:'moisture', wii:4, wiw:7, woi:3, wow:5,
     fertNote:'水培每月换水时加一两滴液肥，土培每月一次',
     waterNote:'水培保持水位2-5cm，避免直射阳光导致水藻滋生' },
 
   { cat:'中光观叶', name:'鹅掌柴', eng:'Schefflera',
     ppfdComp:30, ppfdMin:150, ppfdRec:400, ppfdSat:900,
-    dliMin:3, dliRec:10, dliSat:18,
+    dliMin:3, dliRec:10, dliSat:18, dataSrc:'e',
+    tempMin:45, tempCool:60, tempWarm:85, tempMax:95,
     waterType:'normal', wii:8, wiw:14, woi:5, wow:10,
     fertNote:'生长季每月一次',
     waterNote:'表土干后浇水，耐旱性较好' },
 
   { cat:'中光观叶', name:'铁线蕨', eng:'Maidenhair Fern',
     ppfdComp:20, ppfdMin:80, ppfdRec:250, ppfdSat:600,
-    dliMin:2, dliRec:5, dliSat:10,
+    dliMin:2, dliRec:5, dliSat:10, dataSrc:'e',
+    tempMin:50, tempCool:60, tempWarm:75, tempMax:85,
     waterType:'moisture', wii:3, wiw:5, woi:2, wow:4,
     fertNote:'生长季每月一次，浓度减半',
     waterNote:'极不耐旱，保持持续湿润，空气湿度低时叶片迅速焦边' },
 
   { cat:'中光观叶', name:'春羽', eng:'Philodendron Selloum',
     ppfdComp:25, ppfdMin:100, ppfdRec:350, ppfdSat:800,
-    dliMin:2, dliRec:8, dliSat:16,
+    dliMin:2, dliRec:8, dliSat:16, dataSrc:'e',
+    tempMin:50, tempCool:65, tempWarm:85, tempMax:95,
     waterType:'normal', wii:7, wiw:12, woi:5, wow:9,
     fertNote:'生长季每月一次',
     waterNote:'表土干后浇水' },
@@ -2429,28 +2509,32 @@ const REF_DATA = [
   // ── 华人偏爱
   { cat:'华人偏爱', name:'铜钱草', eng:'Hydrocotyle',
     ppfdComp:30, ppfdMin:150, ppfdRec:500, ppfdSat:1000,
-    dliMin:4, dliRec:12, dliSat:22,
+    dliMin:4, dliRec:12, dliSat:22, dataSrc:'e',
+    tempMin:40, tempCool:60, tempWarm:85, tempMax:95,
     waterType:'moisture', wii:3, wiw:5, woi:2, wow:4,
     fertNote:'生长季每月一次',
     waterNote:'喜湿，可直接水培，土培需保持土壤持续湿润' },
 
   { cat:'华人偏爱', name:'茉莉花', eng:'Jasmine',
     ppfdComp:50, ppfdMin:300, ppfdRec:800, ppfdSat:1500,
-    dliMin:8, dliRec:18, dliSat:30,
+    dliMin:8, dliRec:18, dliSat:30, dataSrc:'v',
+    tempMin:40, tempCool:60, tempWarm:85, tempMax:100,
     waterType:'normal', wii:5, wiw:10, woi:3, wow:7,
     fertNote:'花期前每两周一次磷钾肥，夏季生长旺盛期可每周一次',
     waterNote:'表土干后浇透，花期保持湿润，冬季减少浇水' },
 
   { cat:'华人偏爱', name:'米兰', eng:'Murraya',
     ppfdComp:50, ppfdMin:300, ppfdRec:700, ppfdSat:1400,
-    dliMin:8, dliRec:16, dliSat:28,
+    dliMin:8, dliRec:16, dliSat:28, dataSrc:'e',
+    tempMin:50, tempCool:65, tempWarm:90, tempMax:100,
     waterType:'normal', wii:5, wiw:10, woi:3, wow:7,
     fertNote:'生长季每两周一次，花期前增加磷钾',
     waterNote:'保持土壤微湿，忌积水，冬季移入室内越冬' },
 
   { cat:'华人偏爱', name:'栀子花', eng:'Gardenia',
     ppfdComp:40, ppfdMin:200, ppfdRec:600, ppfdSat:1200,
-    dliMin:6, dliRec:14, dliSat:24,
+    dliMin:6, dliRec:14, dliSat:24, dataSrc:'v',
+    tempMin:45, tempCool:60, tempWarm:75, tempMax:90,
     waterType:'moisture', wii:4, wiw:7, woi:3, wow:5,
     fertNote:'花期前每两周一次酸性肥，pH保持5.0-6.0',
     waterNote:'保持湿润，必须用软水或雨水，硬水导致叶片黄化' },
@@ -2458,21 +2542,24 @@ const REF_DATA = [
   // ── 多肉·仙人掌
   { cat:'多肉·仙人掌', name:'芦荟', eng:'Aloe Vera',
     ppfdComp:30, ppfdMin:150, ppfdRec:500, ppfdSat:1200,
-    dliMin:3, dliRec:12, dliSat:22,
+    dliMin:3, dliRec:12, dliSat:22, dataSrc:'v',
+    tempMin:40, tempCool:55, tempWarm:85, tempMax:100,
     waterType:'succulent', wii:14, wiw:28, woi:10, wow:21,
     fertNote:'一年2-3次即可，春夏施，施肥过多叶片徒长变软',
     waterNote:'完全干透后再浇，宁干勿湿，冬季几乎停水' },
 
   { cat:'多肉·仙人掌', name:'玉露', eng:'Haworthia',
     ppfdComp:15, ppfdMin:80, ppfdRec:300, ppfdSat:600,
-    dliMin:2, dliRec:7, dliSat:12,
+    dliMin:2, dliRec:7, dliSat:12, dataSrc:'v',
+    tempMin:40, tempCool:55, tempWarm:80, tempMax:95,
     waterType:'succulent', wii:14, wiw:28, woi:10, wow:21,
     fertNote:'生长季每2-3个月一次，浓度减半',
     waterNote:'土壤干透后浇水，避免叶心积水导致腐烂' },
 
   { cat:'多肉·仙人掌', name:'蟹爪兰', eng:'Christmas Cactus',
     ppfdComp:20, ppfdMin:100, ppfdRec:400, ppfdSat:900,
-    dliMin:3, dliRec:10, dliSat:18,
+    dliMin:3, dliRec:10, dliSat:18, dataSrc:'v',
+    tempMin:45, tempCool:60, tempWarm:75, tempMax:90,
     waterType:'normal', wii:7, wiw:14, woi:5, wow:10,
     fertNote:'花芽分化前停肥停水促进开花，其余生长期每月一次',
     waterNote:'见干见湿，花期保持湿润，花蕾期避免移动' },
@@ -2480,70 +2567,80 @@ const REF_DATA = [
   // ── 香草·蔬菜
   { cat:'香草·蔬菜', name:'绿薄荷', eng:'Spearmint',
     ppfdComp:40, ppfdMin:200, ppfdRec:600, ppfdSat:1200,
-    dliMin:6, dliRec:14, dliSat:22,
+    dliMin:6, dliRec:14, dliSat:22, dataSrc:'v',
+    tempMin:32, tempCool:55, tempWarm:75, tempMax:90,
     waterType:'moisture', wii:3, wiw:5, woi:2, wow:4,
     fertNote:'盆栽生长季每月一次，过多施肥降低香味和精油含量',
     waterNote:'保持土壤持续湿润，缺水叶片萎蔫快，室外夏季每天检查' },
 
   { cat:'香草·蔬菜', name:'罗勒', eng:'Basil',
     ppfdComp:50, ppfdMin:250, ppfdRec:600, ppfdSat:1200,
-    dliMin:8, dliRec:16, dliSat:24,
+    dliMin:8, dliRec:16, dliSat:24, dataSrc:'v',
+    tempMin:45, tempCool:60, tempWarm:85, tempMax:95,
     waterType:'herb', wii:3, wiw:5, woi:2, wow:3,
     fertNote:'每两周一次氮肥为主，每次采摘后施肥促进再生',
     waterNote:'保持湿润但忌积水，早晨浇水，怕冷不耐霜冻' },
 
   { cat:'香草·蔬菜', name:'迷迭香', eng:'Rosemary',
     ppfdComp:50, ppfdMin:300, ppfdRec:800, ppfdSat:1600,
-    dliMin:8, dliRec:18, dliSat:30,
+    dliMin:8, dliRec:18, dliSat:30, dataSrc:'v',
+    tempMin:20, tempCool:55, tempWarm:80, tempMax:95,
     waterType:'drought', wii:10, wiw:18, woi:7, wow:14,
     fertNote:'生长季每月一次，少肥反而香味更浓郁',
     waterNote:'土壤干透后浇水，耐旱怕涝，地中海原生植物' },
 
   { cat:'香草·蔬菜', name:'韭菜', eng:'Chinese Chives',
     ppfdComp:30, ppfdMin:150, ppfdRec:500, ppfdSat:1000,
-    dliMin:6, dliRec:12, dliSat:20,
+    dliMin:6, dliRec:12, dliSat:20, dataSrc:'e',
+    tempMin:20, tempCool:50, tempWarm:85, tempMax:95,
     waterType:'moisture', wii:3, wiw:5, woi:2, wow:4,
     fertNote:'每次割后施一次氮肥，促进快速再生',
     waterNote:'保持土壤湿润，收割前3天停水提升品质' },
 
   { cat:'香草·蔬菜', name:'香菜', eng:'Cilantro',
     ppfdComp:30, ppfdMin:150, ppfdRec:500, ppfdSat:900,
-    dliMin:5, dliRec:12, dliSat:18,
+    dliMin:5, dliRec:12, dliSat:18, dataSrc:'v',
+    tempMin:25, tempCool:45, tempWarm:70, tempMax:80,
     waterType:'herb', wii:3, wiw:5, woi:2, wow:3,
     fertNote:'每月一次，少量即可，多肥导致抽薹',
     waterNote:'保持湿润，怕热超25°C抽薹，夏季遮阴种植' },
 
   { cat:'香草·蔬菜', name:'紫苏', eng:'Perilla',
     ppfdComp:30, ppfdMin:150, ppfdRec:500, ppfdSat:1000,
-    dliMin:6, dliRec:12, dliSat:20,
+    dliMin:6, dliRec:12, dliSat:20, dataSrc:'e',
+    tempMin:40, tempCool:60, tempWarm:85, tempMax:95,
     waterType:'herb', wii:3, wiw:5, woi:2, wow:3,
     fertNote:'每两周一次，氮肥为主促进叶片生长',
     waterNote:'保持湿润，高温高湿生长旺盛' },
 
   { cat:'香草·蔬菜', name:'西红柿', eng:'Tomato',
     ppfdComp:60, ppfdMin:300, ppfdRec:800, ppfdSat:1600,
-    dliMin:12, dliRec:22, dliSat:35,
+    dliMin:12, dliRec:22, dliSat:35, dataSrc:'v',
+    tempMin:35, tempCool:60, tempWarm:85, tempMax:95,
     waterType:'herb', wii:2, wiw:4, woi:1, wow:3,
     fertNote:'幼苗期每两周一次，结果期每7-10天一次磷钾肥为主',
     waterNote:'均匀浇水最重要，忽干忽湿导致裂果和脐腐病' },
 
   { cat:'香草·蔬菜', name:'草莓', eng:'Strawberry',
     ppfdComp:40, ppfdMin:200, ppfdRec:600, ppfdSat:1200,
-    dliMin:8, dliRec:14, dliSat:22,
+    dliMin:8, dliRec:14, dliSat:22, dataSrc:'v',
+    tempMin:28, tempCool:50, tempWarm:75, tempMax:85,
     waterType:'herb', wii:3, wiw:5, woi:2, wow:4,
     fertNote:'花前和采摘后各施一次，避免春季过度施氮导致叶多果少',
     waterNote:'保持湿润，避免积水，果实不可沾水以防腐烂' },
 
   { cat:'香草·蔬菜', name:'辣椒', eng:'Pepper',
     ppfdComp:50, ppfdMin:250, ppfdRec:700, ppfdSat:1400,
-    dliMin:8, dliRec:18, dliSat:28,
+    dliMin:8, dliRec:18, dliSat:28, dataSrc:'v',
+    tempMin:40, tempCool:65, tempWarm:85, tempMax:95,
     waterType:'herb', wii:3, wiw:5, woi:2, wow:4,
     fertNote:'每两周一次，结果期磷钾为主，氮肥过多叶茂果少',
     waterNote:'表土干后浇水，轻度水分胁迫可提高辣度' },
 
   { cat:'香草·蔬菜', name:'生菜', eng:'Lettuce',
     ppfdComp:20, ppfdMin:100, ppfdRec:250, ppfdSat:600,
-    dliMin:5, dliRec:12, dliSat:17,
+    dliMin:5, dliRec:12, dliSat:17, dataSrc:'v',
+    tempMin:28, tempCool:45, tempWarm:70, tempMax:80,
     waterType:'herb', wii:2, wiw:4, woi:1, wow:3,
     fertNote:'每两周一次氮肥，生长快消耗大',
     waterNote:'保持湿润，温度超25°C停止生长并抽薹，夏季不适合种植' },
@@ -2551,28 +2648,32 @@ const REF_DATA = [
   // ── 观花
   { cat:'观花', name:'非洲紫罗兰', eng:'African Violet',
     ppfdComp:20, ppfdMin:100, ppfdRec:300, ppfdSat:700,
-    dliMin:3, dliRec:8, dliSat:14,
+    dliMin:3, dliRec:8, dliSat:14, dataSrc:'v',
+    tempMin:50, tempCool:65, tempWarm:75, tempMax:85,
     waterType:'normal', wii:7, wiw:10, woi:5, wow:8,
     fertNote:'生长季每两周一次专用肥（氮磷钾均衡偏高磷）',
     waterNote:'底部浇水，叶片绝对不可沾水，水滴导致叶片永久褐斑' },
 
   { cat:'观花', name:'长寿花', eng:'Kalanchoe',
     ppfdComp:25, ppfdMin:150, ppfdRec:500, ppfdSat:1000,
-    dliMin:4, dliRec:12, dliSat:20,
+    dliMin:4, dliRec:12, dliSat:20, dataSrc:'v',
+    tempMin:40, tempCool:60, tempWarm:80, tempMax:90,
     waterType:'drought', wii:10, wiw:18, woi:7, wow:14,
     fertNote:'花期前每两周一次磷钾肥促花，花期和休眠期停肥',
     waterNote:'土壤干透后浇水，多肉质叶片储水，过浇烂根' },
 
   { cat:'观花', name:'天竺葵', eng:'Geranium',
     ppfdComp:40, ppfdMin:200, ppfdRec:600, ppfdSat:1200,
-    dliMin:6, dliRec:14, dliSat:22,
+    dliMin:6, dliRec:14, dliSat:22, dataSrc:'v',
+    tempMin:32, tempCool:55, tempWarm:75, tempMax:90,
     waterType:'normal', wii:5, wiw:10, woi:3, wow:7,
     fertNote:'生长季每两周一次，以磷钾为主促进开花',
     waterNote:'表土干后浇水，耐旱怕涝，过湿茎部易腐烂' },
 
   { cat:'观花', name:'蝴蝶兰', eng:'Phalaenopsis',
     ppfdComp:15, ppfdMin:80, ppfdRec:250, ppfdSat:500,
-    dliMin:2, dliRec:6, dliSat:10,
+    dliMin:2, dliRec:6, dliSat:10, dataSrc:'v',
+    tempMin:55, tempCool:65, tempWarm:80, tempMax:90,
     waterType:'normal', wii:7, wiw:14, woi:5, wow:10,
     fertNote:'生长季每两周一次兰花专用肥，花期停肥，花后修剪促二次开花',
     waterNote:'水苔或树皮基质干透后浇水，花心不可积水，忌积水烂根' },
@@ -2608,9 +2709,74 @@ function renderRef(filter = '') {
 }
 
 // 季节判断：5-9月为春夏，其余为秋冬
-function isSummer() {
+// ── 季节系统（纽约四季）
+function getCurrentSeason() {
   const m = new Date().getMonth() + 1;
-  return m >= 5 && m <= 9;
+  if (m >= 3 && m <= 5)  return 'spring';
+  if (m >= 6 && m <= 8)  return 'summer';
+  if (m >= 9 && m <= 11) return 'autumn';
+  return 'winter';
+}
+
+const SEASON_INFO = {
+  spring: { emoji: '🌱', label: '春季', warm: true  },
+  summer: { emoji: '☀️', label: '夏季', warm: true  },
+  autumn: { emoji: '🍂', label: '秋季', warm: false },
+  winter: { emoji: '❄️', label: '冬季', warm: false },
+};
+
+// 保持向后兼容
+function isSummer() {
+  const s = getCurrentSeason();
+  return s === 'spring' || s === 'summer';
+}
+
+// ── 日期栏渲染
+function renderDateBar() {
+  const now     = new Date();
+  const year    = now.getFullYear();
+  const month   = now.getMonth() + 1;
+  const day     = now.getDate();
+  const weekDays = ['周日','周一','周二','周三','周四','周五','周六'];
+  const weekDay  = weekDays[now.getDay()];
+  const season   = getCurrentSeason();
+  const si       = SEASON_INFO[season];
+
+  var dateText = document.getElementById('date-bar-text');
+  var badge    = document.getElementById('season-badge');
+  if (dateText) dateText.textContent = year + '年' + month + '月' + day + '日  ' + weekDay;
+  if (badge) {
+    badge.textContent = si.emoji + ' ' + si.label;
+    // 季节配色
+    var colors = {
+      spring: 'rgba(168,200,120,.3)',
+      summer: 'rgba(212,168,83,.3)',
+      autumn: 'rgba(200,140,80,.3)',
+      winter: 'rgba(100,160,200,.3)',
+    };
+    badge.style.borderColor = colors[season];
+  }
+}
+
+// ── 季节变化检测（每次启动时调用）
+function checkSeasonChange() {
+  var today      = new Date().toISOString().slice(0,10);
+  var lastDate   = localStorage.getItem('plantcare_last_open')   || '';
+  var lastSeason = localStorage.getItem('plantcare_last_season') || '';
+  var nowSeason  = getCurrentSeason();
+  var si         = SEASON_INFO[nowSeason];
+
+  localStorage.setItem('plantcare_last_open',   today);
+  localStorage.setItem('plantcare_last_season', nowSeason);
+
+  // 季节发生变化时提示并刷新
+  if (lastSeason && lastSeason !== nowSeason) {
+    // 延迟显示，等页面渲染完
+    setTimeout(function() {
+      showToast(si.emoji + ' 已进入' + si.label + '，浇水周期已自动更新');
+      renderPlants(); // 刷新卡片颜色和周期
+    }, 800);
+  }
 }
 
 // 浇水推荐天数
@@ -2620,77 +2786,138 @@ function waterCycleDays(r, location) {
   return summer ? r.wii : r.wiw;
 }
 
+// ── 温度条 HTML 生成（纯字符串拼接，避免嵌套模板）
+function tempBarHTML(r, badge) {
+  if (!r.tempMin && r.tempMin !== 0) return '';
+  var mn = r.tempMin, cl = r.tempCool, wm = r.tempWarm, mx = r.tempMax;
+  var range  = mx - mn;
+  var coldW  = Math.round((cl - mn) / range * 100);
+  var goodW  = Math.round((wm - cl) / range * 100);
+  var hotW   = 100 - coldW - goodW;
+  var fToC   = function(f) { return Math.round((f - 32) * 5 / 9); };
+
+  var html = '';
+  html += '<div style="display:flex;align-items:center;justify-content:space-between;margin:0 0 6px">';
+  html += '<div style="font-size:10px;color:var(--text3);font-family:\'DM Mono\',monospace;text-transform:uppercase;letter-spacing:.6px">🌡 温度区间（°F / °C）</div>';
+  html += (badge || '');
+  html += '</div>';
+
+  // 三段颜色条
+  html += '<div style="display:flex;height:14px;border-radius:7px;overflow:hidden;margin-bottom:6px">';
+  html += '<div style="width:' + coldW + '%;background:linear-gradient(90deg,#4488cc,#66aadd)"></div>';
+  html += '<div style="width:' + goodW + '%;background:linear-gradient(90deg,#55aa55,#88cc66)"></div>';
+  html += '<div style="width:' + hotW  + '%;background:linear-gradient(90deg,#dd8833,#cc4422)"></div>';
+  html += '</div>';
+
+  // 刻度标签行
+  html += '<div style="position:relative;height:32px;margin-bottom:4px">';
+
+  // 左端（tempMin）
+  html += '<div style="position:absolute;left:0;top:0;text-align:left">';
+  html += '<div style="font-size:9px;color:#66aadd;font-family:\'DM Mono\',monospace;font-weight:600">' + mn + '°F</div>';
+  html += '<div style="font-size:9px;color:var(--text3);font-family:\'DM Mono\',monospace">' + fToC(mn) + '°C</div>';
+  html += '</div>';
+
+  // tempCool（适宜区左边界）
+  html += '<div style="position:absolute;left:' + coldW + '%;top:0;transform:translateX(-50%);text-align:center">';
+  html += '<div style="font-size:9px;color:#88cc66;font-family:\'DM Mono\',monospace;font-weight:600">' + cl + '°F</div>';
+  html += '<div style="font-size:9px;color:var(--text3);font-family:\'DM Mono\',monospace">' + fToC(cl) + '°C</div>';
+  html += '</div>';
+
+  // tempWarm（适宜区右边界）
+  html += '<div style="position:absolute;left:' + (coldW + goodW) + '%;top:0;transform:translateX(-50%);text-align:center">';
+  html += '<div style="font-size:9px;color:#dd8833;font-family:\'DM Mono\',monospace;font-weight:600">' + wm + '°F</div>';
+  html += '<div style="font-size:9px;color:var(--text3);font-family:\'DM Mono\',monospace">' + fToC(wm) + '°C</div>';
+  html += '</div>';
+
+  // 右端（tempMax）
+  html += '<div style="position:absolute;right:0;top:0;text-align:right">';
+  html += '<div style="font-size:9px;color:#cc4422;font-family:\'DM Mono\',monospace;font-weight:600">' + mx + '°F</div>';
+  html += '<div style="font-size:9px;color:var(--text3);font-family:\'DM Mono\',monospace">' + fToC(mx) + '°C</div>';
+  html += '</div>';
+
+  html += '</div>';
+
+  // 图例
+  html += '<div style="display:flex;gap:12px;font-size:10px;color:var(--text3);margin-bottom:8px">';
+  html += '<span><span style="display:inline-block;width:8px;height:8px;background:#66aadd;border-radius:2px;margin-right:3px"></span>耐寒区</span>';
+  html += '<span><span style="display:inline-block;width:8px;height:8px;background:#88cc66;border-radius:2px;margin-right:3px"></span>适宜区</span>';
+  html += '<span><span style="display:inline-block;width:8px;height:8px;background:#dd8833;border-radius:2px;margin-right:3px"></span>耐热区</span>';
+  html += '</div>';
+
+  return html;
+}
+
+// ── 可信度标记
+function srcBadge(src) {
+  if (src !== 'e') return '';
+  return ' <span style="display:inline-block;padding:1px 6px;border-radius:4px;'
+       + 'font-size:9px;font-family:\'DM Mono\',monospace;letter-spacing:.3px;'
+       + 'background:rgba(212,168,83,.15);border:1px solid rgba(212,168,83,.4);'
+       + 'color:var(--accent2);vertical-align:middle">~ 估算数据</span>';
+}
+
 function refItemHTML(r) {
-  const key  = r.name;
-  const open = refExpanded[key];
-  const summer = isSummer();
-  const season = summer ? '春夏' : '秋冬';
+  var key    = r.name;
+  var open   = refExpanded[key];
+  var summer = isSummer();
+  var season = summer ? '春夏' : '秋冬';
+  var wIn    = summer ? r.wii : r.wiw;
+  var wOut   = summer ? r.woi : r.wow;
+  var ls     = srcBadge(r.dataSrc);
+  var ts     = srcBadge(r.dataSrc);
 
-  // 浇水推荐
-  const wIn  = summer ? r.wii : r.wiw;
-  const wOut = summer ? r.woi : r.wow;
+  // 数据格子颜色：估算时稍暗
+  var lightCellStyle = r.dataSrc === 'e'
+    ? 'opacity:0.82;border-style:dashed' : '';
 
-  return `<div class="ref-item">
-    <div class="ref-item-header" onclick="toggleRef('${key}')">
-      <div>
-        <div class="ref-item-name">${r.name}</div>
-        <div class="ref-item-sub">${r.eng}</div>
-      </div>
-      <span style="color:var(--text3);font-size:12px">${open ? '▲' : '▼'}</span>
-    </div>
-    <div class="ref-item-body ${open ? 'open' : ''}" id="refbody-${key}">
+  var html = '';
+  html += '<div class="ref-item">';
+  html += '<div class="ref-item-header" onclick="toggleRef(\'' + key + '\')">';
+  html += '<div>';
+  html += '<div class="ref-item-name">' + r.name + '</div>';
+  html += '<div class="ref-item-sub">' + r.eng;
+  // 在副标题行显示两个徽章状态总览
+  if (r.dataSrc === 'e') {
+    html += ' <span style="font-size:9px;color:var(--accent2);font-family:\'DM Mono\',monospace">~</span>';
+  }
+  html += '</div>';
+  html += '</div>';
+  html += '<span style="color:var(--text3);font-size:12px">' + (open ? '▲' : '▼') + '</span>';
+  html += '</div>';
+  html += '<div class="ref-item-body ' + (open ? 'open' : '') + '" id="refbody-' + key + '">';
 
-      <!-- 光照三段 -->
-      <div style="font-size:10px;color:var(--text3);font-family:'DM Mono',monospace;text-transform:uppercase;letter-spacing:.6px;margin:10px 0 6px">☀️ 光照需求</div>
-      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;margin-bottom:8px">
-        <div class="ref-data-cell">
-          <div class="ref-data-label">光补偿点</div>
-          <div class="ref-data-val" style="font-size:12px;color:var(--text2)">${r.ppfdComp} μmol</div>
-        </div>
-        <div class="ref-data-cell">
-          <div class="ref-data-label">推荐PPFD</div>
-          <div class="ref-data-val" style="font-size:12px">${r.ppfdMin}–${r.ppfdRec} μmol</div>
-        </div>
-        <div class="ref-data-cell">
-          <div class="ref-data-label">光饱和点</div>
-          <div class="ref-data-val amber" style="font-size:12px">${r.ppfdSat} μmol</div>
-        </div>
-      </div>
-      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;margin-bottom:10px">
-        <div class="ref-data-cell">
-          <div class="ref-data-label">DLI 最低</div>
-          <div class="ref-data-val" style="font-size:12px;color:var(--text2)">${r.dliMin} mol/m²</div>
-        </div>
-        <div class="ref-data-cell">
-          <div class="ref-data-label">DLI 推荐</div>
-          <div class="ref-data-val" style="font-size:12px">${r.dliRec} mol/m²</div>
-        </div>
-        <div class="ref-data-cell">
-          <div class="ref-data-label">DLI 饱和</div>
-          <div class="ref-data-val amber" style="font-size:12px">${r.dliSat} mol/m²</div>
-        </div>
-      </div>
+  // ── 光照三段
+  html += '<div style="display:flex;align-items:center;justify-content:space-between;margin:10px 0 6px">';
+  html += '<div style="font-size:10px;color:var(--text3);font-family:\'DM Mono\',monospace;text-transform:uppercase;letter-spacing:.6px">☀️ 光照需求</div>';
+  html += ls;
+  html += '</div>';
+  html += '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;margin-bottom:8px;' + lightCellStyle + '">';
+  html += '<div class="ref-data-cell"><div class="ref-data-label">光补偿点</div><div class="ref-data-val" style="font-size:12px;color:var(--text2)">' + r.ppfdComp + ' μmol</div></div>';
+  html += '<div class="ref-data-cell"><div class="ref-data-label">推荐PPFD</div><div class="ref-data-val" style="font-size:12px">' + r.ppfdMin + '–' + r.ppfdRec + ' μmol</div></div>';
+  html += '<div class="ref-data-cell"><div class="ref-data-label">光饱和点</div><div class="ref-data-val amber" style="font-size:12px">' + r.ppfdSat + ' μmol</div></div>';
+  html += '</div>';
+  html += '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;margin-bottom:10px;' + lightCellStyle + '">';
+  html += '<div class="ref-data-cell"><div class="ref-data-label">DLI 最低</div><div class="ref-data-val" style="font-size:12px;color:var(--text2)">' + r.dliMin + ' mol/m²</div></div>';
+  html += '<div class="ref-data-cell"><div class="ref-data-label">DLI 推荐</div><div class="ref-data-val" style="font-size:12px">' + r.dliRec + ' mol/m²</div></div>';
+  html += '<div class="ref-data-cell"><div class="ref-data-label">DLI 饱和</div><div class="ref-data-val amber" style="font-size:12px">' + r.dliSat + ' mol/m²</div></div>';
+  html += '</div>';
 
-      <!-- 浇水推荐 -->
-      <div style="font-size:10px;color:var(--text3);font-family:'DM Mono',monospace;text-transform:uppercase;letter-spacing:.6px;margin-bottom:6px">
-        💧 浇水频率（当前：${season}）
-      </div>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:10px">
-        <div class="ref-data-cell" style="border-color:rgba(168,200,120,.35)">
-          <div class="ref-data-label">🏠 室内</div>
-          <div class="ref-data-val" style="font-size:13px">每 ${wIn} 天</div>
-        </div>
-        <div class="ref-data-cell" style="border-color:rgba(212,168,83,.35)">
-          <div class="ref-data-label">🌤 室外</div>
-          <div class="ref-data-val amber" style="font-size:13px">每 ${wOut} 天</div>
-        </div>
-      </div>
+  // ── 温度条（含独立标记）
+  html += tempBarHTML(r, ts);
 
-      <!-- 养护备注 -->
-      <div class="ref-note">💧 ${r.waterNote}</div>
-      <div class="ref-note" style="margin-top:4px">🌿 ${r.fertNote}</div>
-    </div>
-  </div>`;
+  // ── 浇水推荐
+  html += '<div style="font-size:10px;color:var(--text3);font-family:\'DM Mono\',monospace;text-transform:uppercase;letter-spacing:.6px;margin-bottom:6px">💧 浇水频率（当前：' + season + '）</div>';
+  html += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:10px">';
+  html += '<div class="ref-data-cell" style="border-color:rgba(168,200,120,.35)"><div class="ref-data-label">🏠 室内</div><div class="ref-data-val" style="font-size:13px">每 ' + wIn + ' 天</div></div>';
+  html += '<div class="ref-data-cell" style="border-color:rgba(212,168,83,.35)"><div class="ref-data-label">🌤 室外</div><div class="ref-data-val amber" style="font-size:13px">每 ' + wOut + ' 天</div></div>';
+  html += '</div>';
+
+  // ── 养护备注
+  html += '<div class="ref-note">💧 ' + r.waterNote + '</div>';
+  html += '<div class="ref-note" style="margin-top:4px">🌿 ' + r.fertNote + '</div>';
+  html += '</div></div>';
+  return html;
 }
 
 
@@ -3089,6 +3316,122 @@ function deleteNote(id) {
 }
 
 // ══════════════════════════════════════════
+//  WEATHER
+// ══════════════════════════════════════════
+// 纽约坐标
+var NYC_LAT = 40.71;
+var NYC_LON = -74.01;
+
+// 缓存有效期：1小时（毫秒）
+var WEATHER_CACHE_MS = 60 * 60 * 1000;
+
+async function fetchWeather() {
+  // 检查缓存
+  var cached = db.weather;
+  if (cached && cached.fetchedAt &&
+      (Date.now() - cached.fetchedAt) < WEATHER_CACHE_MS) {
+    renderWeatherBar(cached);
+    renderPlants(); // 刷新预警标签
+    return;
+  }
+
+  document.getElementById('weather-status').textContent = '获取中…';
+  document.getElementById('weather-bar').style.display = 'block';
+
+  try {
+    var url = 'https://api.open-meteo.com/v1/forecast'
+      + '?latitude=' + NYC_LAT
+      + '&longitude=' + NYC_LON
+      + '&daily=temperature_2m_max,temperature_2m_min'
+      + '&temperature_unit=fahrenheit'
+      + '&timezone=America%2FNew_York'
+      + '&forecast_days=2';
+
+    var res  = await fetch(url);
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    var data = await res.json();
+
+    var weather = {
+      fetchedAt:    Date.now(),
+      todayMax:     Math.round(data.daily.temperature_2m_max[0]),
+      todayMin:     Math.round(data.daily.temperature_2m_min[0]),
+      tomorrowMax:  Math.round(data.daily.temperature_2m_max[1]),
+      tomorrowMin:  Math.round(data.daily.temperature_2m_min[1]),
+    };
+
+    db.weather = weather;
+    saveDB();
+    renderWeatherBar(weather);
+    renderPlants(); // 触发植物卡片预警刷新
+
+  } catch (e) {
+    document.getElementById('weather-status').textContent = '天气获取失败';
+    setTimeout(function(){
+      document.getElementById('weather-status').textContent = '';
+    }, 3000);
+  }
+}
+
+function renderWeatherBar(w) {
+  var bar = document.getElementById('weather-bar');
+  bar.style.display = 'block';
+
+  // 华氏转摄氏
+  var fToC = function(f) { return Math.round((f-32)*5/9); };
+
+  document.getElementById('weather-today').textContent =
+    '今天 ' + w.todayMax + '°F/' + w.todayMin + '°F'
+    + '  (' + fToC(w.todayMax) + '/' + fToC(w.todayMin) + '°C)';
+
+  document.getElementById('weather-tomorrow').textContent =
+    '明天 ' + w.tomorrowMax + '°F/' + w.tomorrowMin + '°F'
+    + '  (' + fToC(w.tomorrowMax) + '/' + fToC(w.tomorrowMin) + '°C)';
+
+  document.getElementById('weather-status').textContent = '';
+}
+
+// ── 温度预警（供植物卡片调用）
+function getTempWarning(plant) {
+  var w = db.weather;
+  if (!w) return '';
+
+  // 只对室外植物或无参考数据的植物检查
+  var ref = REF_DATA.find(function(r){ return r.name === (plant.refName || plant.name); });
+  if (!ref || !ref.tempMin) return '';
+
+  // 只有室外植物才检查温度（室内植物已有保护）
+  if (plant.location !== 'outdoor') return '';
+
+  var tomorrowMin = w.tomorrowMin;
+  var todayMax    = w.todayMax;
+  var warn = '';
+
+  if (tomorrowMin <= ref.tempMin) {
+    // 明天最低温 ≤ 耐寒下限 → 极度危险
+    warn = '<div style="margin-top:5px;padding:4px 8px;background:rgba(224,112,96,.15);'
+         + 'border:1px solid rgba(224,112,96,.5);border-radius:6px;'
+         + 'font-size:11px;color:var(--red);font-family:\'DM Mono\',monospace">'
+         + '❄️ 明天最低 ' + tomorrowMin + '°F · 低于耐寒下限，必须移入室内</div>';
+  } else if (tomorrowMin <= ref.tempCool) {
+    // 明天最低温 ≤ 适宜区下限 → 警告
+    warn = '<div style="margin-top:5px;padding:4px 8px;background:rgba(212,168,83,.12);'
+         + 'border:1px solid rgba(212,168,83,.4);border-radius:6px;'
+         + 'font-size:11px;color:var(--yellow);font-family:\'DM Mono\',monospace">'
+         + '🌡 明天最低 ' + tomorrowMin + '°F · 低于适宜温度，建议移入室内</div>';
+  }
+
+  if (todayMax >= ref.tempMax) {
+    // 今天最高温 ≥ 耐热上限 → 高温警告
+    warn += '<div style="margin-top:4px;padding:4px 8px;background:rgba(224,112,96,.12);'
+          + 'border:1px solid rgba(224,112,96,.4);border-radius:6px;'
+          + 'font-size:11px;color:var(--red);font-family:\'DM Mono\',monospace">'
+          + '🔥 今天最高 ' + todayMax + '°F · 达到耐热上限，建议遮阴</div>';
+  }
+
+  return warn;
+}
+
+// ══════════════════════════════════════════
 //  EXPORT / IMPORT
 // ══════════════════════════════════════════
 function exportData() {
@@ -3132,10 +3475,6 @@ function closeSheet(id) {
   document.getElementById(id).classList.remove('open');
   document.body.style.overflow = '';
 }
-document.querySelectorAll('.overlay').forEach(el => {
-  el.addEventListener('click', e => { if (e.target === el) closeSheet(el.id); });
-});
-
 // ══════════════════════════════════════════
 //  TOAST
 // ══════════════════════════════════════════
@@ -3166,7 +3505,16 @@ function confirmCancel() { document.getElementById('confirm-overlay').classList.
 try {
   loadDB();
   if (typeof loadTheme === 'function') loadTheme();
+  document.getElementById('add-fert-cycle').addEventListener('change', function() {
+    document.getElementById('custom-cycle-group').style.display = this.value === 'custom' ? 'block' : 'none';
+  });
+  document.querySelectorAll('.overlay').forEach(function(el) {
+    el.addEventListener('click', function(e) { if (e.target === el) closeSheet(el.id); });
+  });
+  renderDateBar();
+  checkSeasonChange();
   renderPlants();
+  fetchWeather();
   calcOutdoorDLI();
   populatePlantSelect();
   addCalcRow('绿薄荷·补光灯');
