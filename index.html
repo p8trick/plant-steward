@@ -75,6 +75,7 @@ html, body {
   flex: 1;
   overflow-y: auto;
   overflow-x: hidden;
+  /* tab bar 高度 + 安全区 + 额外间距 */
   padding-bottom: calc(var(--tab-h) + var(--safe-bot) + 16px);
   -webkit-overflow-scrolling: touch;
 }
@@ -84,12 +85,15 @@ html, body {
 #tabbar {
   position: fixed;
   bottom: 0; left: 0; right: 0;
+  /* 背景延伸覆盖安全区，视觉上无空白 */
   height: calc(var(--tab-h) + var(--safe-bot));
-  padding-bottom: var(--safe-bot);
   background: var(--bg2);
   border-top: 1px solid var(--border);
   display: flex;
   z-index: 100;
+  /* 用 padding-top 把按钮推到 tab-h 范围内，不用 padding-bottom */
+  align-items: flex-start;
+  padding-top: 0;
 }
 .tab-btn {
   flex: 1;
@@ -104,6 +108,8 @@ html, body {
   cursor: pointer;
   transition: color .2s;
   padding: 0;
+  /* 按钮高度限制在 tab-h 内，不延伸到安全区 */
+  height: var(--tab-h);
 }
 .tab-btn.active { color: var(--accent); }
 .tab-btn svg { width: 22px; height: 22px; }
