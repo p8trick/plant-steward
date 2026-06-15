@@ -727,7 +727,7 @@ html, body {
     <div id="weather-bar" style="display:none;background:var(--bg2);border-bottom:1px solid var(--border);padding:7px 20px">
       <div style="display:flex;align-items:center;justify-content:space-between">
         <div style="display:flex;gap:16px;align-items:center">
-          <span style="font-size:11px;color:var(--text3);font-family:'DM Mono',monospace">📍 纽约</span>
+          <span style="font-size:11px;color:var(--text3);font-family:'DM Mono',monospace">📍 布鲁克林</span>
           <span id="weather-today" style="font-size:12px;font-family:'DM Mono',monospace;color:var(--text2)"></span>
           <span id="weather-tomorrow" style="font-size:12px;font-family:'DM Mono',monospace;color:var(--text3)"></span>
         </div>
@@ -787,7 +787,7 @@ html, body {
     <div class="page-header">
       <div>
         <div class="page-title">☀️ 光照计算</div>
-        <div class="page-sub">LUX → PPFD → DLI</div>
+        <div class="page-sub">LUX → PPFD → DLI · 布鲁克林</div>
       </div>
     </div>
 
@@ -1233,6 +1233,10 @@ function loadDB() {
   catch(e) { db = { plants: [], logs: [], notes: [] }; }
   if (!db.notes)   db.notes   = [];
   if (!db.weather) db.weather = null;
+  // 坐标更新到布鲁克林，清除旧缓存
+  if (db.weather && db.weather.lat && db.weather.lat !== 40.6782) {
+    db.weather = null;
+  }
 }
 function saveDB() { localStorage.setItem('plantcare_db', JSON.stringify(db)); }
 function genId() { return Date.now().toString(36) + Math.random().toString(36).slice(2,6); }
@@ -3318,9 +3322,9 @@ function deleteNote(id) {
 // ══════════════════════════════════════════
 //  WEATHER
 // ══════════════════════════════════════════
-// 纽约坐标
-var NYC_LAT = 40.71;
-var NYC_LON = -74.01;
+// 布鲁克林坐标（比曼哈顿坐标更准确）
+var NYC_LAT = 40.6782;
+var NYC_LON = -73.9442;
 
 // 缓存有效期：1小时（毫秒）
 var WEATHER_CACHE_MS = 60 * 60 * 1000;
@@ -3353,6 +3357,8 @@ async function fetchWeather() {
 
     var weather = {
       fetchedAt:    Date.now(),
+      lat:          NYC_LAT,
+      lon:          NYC_LON,
       todayMax:     Math.round(data.daily.temperature_2m_max[0]),
       todayMin:     Math.round(data.daily.temperature_2m_min[0]),
       tomorrowMax:  Math.round(data.daily.temperature_2m_max[1]),
