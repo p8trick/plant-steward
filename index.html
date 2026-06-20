@@ -758,7 +758,10 @@ html, body {
       align-items:center;
       justify-content:space-between">
       <div id="date-bar-text" style="font-size:12px;color:var(--text2);font-family:'DM Mono',monospace;letter-spacing:.3px"></div>
-      <div id="season-badge" style="font-size:11px;padding:2px 10px;border-radius:20px;border:1px solid var(--border);color:var(--text2)"></div>
+      <div style="display:flex;align-items:center;gap:8px">
+        <div id="daylight-badge" style="font-size:11px;padding:2px 10px;border-radius:20px;border:1px solid var(--border);color:var(--text2);font-family:'DM Mono',monospace"></div>
+        <div id="season-badge" style="font-size:11px;padding:2px 10px;border-radius:20px;border:1px solid var(--border);color:var(--text2)"></div>
+      </div>
     </div>
     <!-- 天气栏 -->
     <div id="weather-bar" style="display:none;background:var(--bg2);border-bottom:1px solid var(--border);padding:7px 20px">
@@ -1142,7 +1145,7 @@ html, body {
     <div class="sheet-header">
       <div>
         <div class="sheet-title">⚙️ 设置</div>
-        <div style="font-size:10px;color:var(--text3);font-family:'DM Mono',monospace;margin-top:2px">PlantSteward v1.9.2</div>
+        <div style="font-size:10px;color:var(--text3);font-family:'DM Mono',monospace;margin-top:2px">PlantSteward v1.9.4</div>
       </div>
       <button class="btn btn-sm" onclick="closeSheet('sheet-settings')">关闭</button>
     </div>
@@ -1259,6 +1262,11 @@ html, body {
 // ══════════════════════════════════════════
 //  DATA
 // ══════════════════════════════════════════
+// 布鲁克林坐标（比曼哈顿坐标更准确）
+const NYC_LAT = 40.6782;
+const NYC_LON = -73.9442;
+const WEATHER_CACHE_MS = 60 * 60 * 1000; // 天气缓存1小时
+
 let db = { plants: [], logs: [] };
 let currentPlantId = null;
 let logType = null; // 'water' | 'fert'
@@ -2799,6 +2807,36 @@ function isSummer() {
 }
 
 // ── 日期栏渲染
+// ── 精确日照时长计算
+// 赤纬角：Spencer (1971) 傅里叶级数近似，精度优于简单正弦近似
+// 大气折射修正：太阳视圆面半径(0.2666°) + 标准大气折射(0.5667°) = 0.8333°
+// 即实际"日出"是太阳上边缘接触地平线，比几何日出早、比几何日落晚，共多出约6-8分钟
+function calcDaylightMinutes(date, lat) {
+  var start = new Date(date.getFullYear(), 0, 0);
+  var n = Math.floor((date - start) / 86400000) + 1; // day of year
+
+  var gamma = 2 * Math.PI / 365 * (n - 1);
+  var decl = 0.006918
+    - 0.399912 * Math.cos(gamma)     + 0.070257 * Math.sin(gamma)
+    - 0.006758 * Math.cos(2*gamma)   + 0.000907 * Math.sin(2*gamma)
+    - 0.002697 * Math.cos(3*gamma)   + 0.00148  * Math.sin(3*gamma);
+
+  var latRad = lat * Math.PI / 180;
+  var zenith = 90.833 * Math.PI / 180; // 含大气折射+太阳视圆面修正
+
+  var cosH = (Math.cos(zenith) - Math.sin(latRad)*Math.sin(decl)) / (Math.cos(latRad)*Math.cos(decl));
+  cosH = Math.max(-1, Math.min(1, cosH));
+  var H = Math.acos(cosH);
+  var hours = 2 * H * 12 / Math.PI;
+  return Math.round(hours * 60);
+}
+
+function formatDaylight(minutes) {
+  var h = Math.floor(minutes / 60);
+  var m = minutes % 60;
+  return h + 'h' + String(m).padStart(2, '0') + 'm';
+}
+
 function renderDateBar() {
   const now     = new Date();
   const year    = now.getFullYear();
@@ -2811,7 +2849,15 @@ function renderDateBar() {
 
   var dateText = document.getElementById('date-bar-text');
   var badge    = document.getElementById('season-badge');
+  var dlBadge  = document.getElementById('daylight-badge');
+
   if (dateText) dateText.textContent = year + '年' + month + '月' + day + '日  ' + weekDay;
+
+  if (dlBadge) {
+    var mins = calcDaylightMinutes(now, NYC_LAT);
+    dlBadge.textContent = '☀️ ' + formatDaylight(mins);
+  }
+
   if (badge) {
     badge.textContent = si.emoji + ' ' + si.label;
     // 季节配色
@@ -3385,13 +3431,6 @@ function deleteNote(id) {
 // ══════════════════════════════════════════
 //  WEATHER
 // ══════════════════════════════════════════
-// 布鲁克林坐标（比曼哈顿坐标更准确）
-var NYC_LAT = 40.6782;
-var NYC_LON = -73.9442;
-
-// 缓存有效期：1小时（毫秒）
-var WEATHER_CACHE_MS = 60 * 60 * 1000;
-
 async function fetchWeather() {
   // 检查缓存
   var cached = db.weather;
