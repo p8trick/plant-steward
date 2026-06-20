@@ -378,6 +378,37 @@ html, body {
 .action-btn.log-water { border-color: #3a6080; }
 .action-btn.log-fert  { border-color: #8a6030; }
 
+/* 待操作：发光脉冲提示 */
+.action-btn.water.pending {
+  border-color: #66aaee;
+  box-shadow: 0 0 0 0 rgba(102,170,238,.5);
+  animation: pulse-blue 2s infinite;
+}
+.action-btn.fert.pending {
+  border-color: #e8b860;
+  box-shadow: 0 0 0 0 rgba(232,184,96,.5);
+  animation: pulse-amber 2s infinite;
+}
+@keyframes pulse-blue {
+  0%   { box-shadow: 0 0 0 0 rgba(102,170,238,.45); }
+  70%  { box-shadow: 0 0 0 8px rgba(102,170,238,0); }
+  100% { box-shadow: 0 0 0 0 rgba(102,170,238,0); }
+}
+@keyframes pulse-amber {
+  0%   { box-shadow: 0 0 0 0 rgba(232,184,96,.45); }
+  70%  { box-shadow: 0 0 0 8px rgba(232,184,96,0); }
+  100% { box-shadow: 0 0 0 0 rgba(232,184,96,0); }
+}
+
+/* 已完成：变暗 */
+.action-btn.logged {
+  background: var(--bg2);
+  border-color: var(--border);
+  color: var(--text3);
+  opacity: 0.7;
+}
+.action-btn.logged .action-icon { color: var(--green); }
+
 .log-section { padding: 16px 20px; }
 .log-section-title {
   font-size: 12px;
@@ -1111,7 +1142,7 @@ html, body {
     <div class="sheet-header">
       <div>
         <div class="sheet-title">⚙️ 设置</div>
-        <div style="font-size:10px;color:var(--text3);font-family:'DM Mono',monospace;margin-top:2px">PlantSteward v1.9.1</div>
+        <div style="font-size:10px;color:var(--text3);font-family:'DM Mono',monospace;margin-top:2px">PlantSteward v1.9.2</div>
       </div>
       <button class="btn btn-sm" onclick="closeSheet('sheet-settings')">关闭</button>
     </div>
@@ -1219,7 +1250,7 @@ html, body {
     <div class="confirm-msg" id="confirm-msg"></div>
     <div class="confirm-btns">
       <button class="btn" onclick="confirmCancel()">取消</button>
-      <button class="btn" style="color:var(--red);border-color:var(--red)" onclick="confirmOk()">确认删除</button>
+      <button class="btn" id="confirm-ok-btn" style="color:var(--red);border-color:var(--red)" onclick="confirmOk()">确认删除</button>
     </div>
   </div>
 </div>
@@ -1616,13 +1647,13 @@ function renderDetail() {
       </div>
     </div>
     <div class="action-row">
-      <button class="action-btn water" onclick="quickLog('water')">
-        <span class="action-icon">💧</span>
-        <span>刚浇水</span>
+      <button class="action-btn water ${todayLogged(plant.id,'water') ? 'logged' : 'pending'}" onclick="quickLog('water')">
+        <span class="action-icon">${todayLogged(plant.id,'water') ? '✓' : '💧'}</span>
+        <span>${todayLogged(plant.id,'water') ? '已浇水' : '刚浇水'}</span>
       </button>
-      <button class="action-btn fert" onclick="quickLog('fert')">
-        <span class="action-icon">🌿</span>
-        <span>刚施肥</span>
+      <button class="action-btn fert ${todayLogged(plant.id,'fert') ? 'logged' : 'pending'}" onclick="quickLog('fert')">
+        <span class="action-icon">${todayLogged(plant.id,'fert') ? '✓' : '🌿'}</span>
+        <span>${todayLogged(plant.id,'fert') ? '已施肥' : '刚施肥'}</span>
       </button>
       <button class="action-btn log-water" onclick="openLog('water')">
         <span class="action-icon">📅</span>
@@ -1929,11 +1960,37 @@ function drawCalendarChart(plant, logs) {
   });
 }
 
+// 今天是否已记录过某类型操作
+function todayLogged(plantId, type) {
+  const today = new Date().toDateString();
+  return db.logs.some(function(l) {
+    return l.plantId === plantId && l.type === type &&
+           new Date(l.date).toDateString() === today;
+  });
+}
+
 function quickLog(type) {
   const plant = db.plants.find(p => p.id === currentPlantId);
   if (!plant) return;
+
+  // 今天已经记录过，弹窗确认
+  if (todayLogged(plant.id, type)) {
+    const label = type === 'water' ? '浇水' : '施肥';
+    showConfirm(
+      '重复记录',
+      '今天已经' + label + '过了，确定要再记录一次吗？',
+      function() { doQuickLog(type, plant); },
+      '确认记录',
+      'var(--accent)'
+    );
+    return;
+  }
+  doQuickLog(type, plant);
+}
+
+function doQuickLog(type, plant) {
   const now = new Date().toISOString();
-  const log = { id: genId(), plantId: currentPlantId, type, date: now, note: '' };
+  const log = { id: genId(), plantId: plant.id, type, date: now, note: '' };
   db.logs.push(log);
   if (type === 'water') plant.lastWater = now;
   else plant.lastFert = now;
@@ -3502,10 +3559,14 @@ function showToast(msg) {
 // ══════════════════════════════════════════
 //  CONFIRM
 // ══════════════════════════════════════════
-function showConfirm(title, msg, cb) {
+function showConfirm(title, msg, cb, okLabel, okColor) {
   confirmCb = cb;
   document.getElementById('confirm-title').textContent = title;
   document.getElementById('confirm-msg').textContent   = msg;
+  var okBtn = document.getElementById('confirm-ok-btn');
+  okBtn.textContent = okLabel || '确认删除';
+  okBtn.style.color = okColor || 'var(--red)';
+  okBtn.style.borderColor = okColor || 'var(--red)';
   document.getElementById('confirm-overlay').classList.add('open');
 }
 function confirmOk()     { document.getElementById('confirm-overlay').classList.remove('open'); if (confirmCb) confirmCb(); confirmCb = null; }
