@@ -756,12 +756,18 @@ html, body {
       padding:7px 20px;
       display:flex;
       align-items:center;
-      justify-content:space-between">
+      justify-content:space-between;
+      position:relative">
       <div id="date-bar-text" style="font-size:12px;color:var(--text2);font-family:'DM Mono',monospace;letter-spacing:.3px"></div>
       <div style="display:flex;align-items:center;gap:8px">
-        <div id="daylight-badge" style="font-size:11px;padding:2px 10px;border-radius:20px;border:1px solid var(--border);color:var(--text2);font-family:'DM Mono',monospace"></div>
+        <div id="daylight-badge" onclick="toggleDaylightDetail()" style="font-size:11px;padding:2px 10px;border-radius:20px;border:1px solid var(--border);color:var(--text2);font-family:'DM Mono',monospace;cursor:pointer"></div>
         <div id="season-badge" style="font-size:11px;padding:2px 10px;border-radius:20px;border:1px solid var(--border);color:var(--text2)"></div>
       </div>
+      <!-- 日出日落详情气泡 -->
+      <div id="daylight-detail" style="display:none;position:absolute;top:100%;right:20px;margin-top:6px;
+        background:var(--bg3);border:1px solid var(--border);border-radius:10px;padding:10px 14px;
+        font-size:11px;font-family:'DM Mono',monospace;color:var(--text2);z-index:50;
+        box-shadow:0 4px 16px rgba(0,0,0,.3);white-space:nowrap"></div>
     </div>
     <!-- 天气栏 -->
     <div id="weather-bar" style="display:none;background:var(--bg2);border-bottom:1px solid var(--border);padding:7px 20px">
@@ -1145,7 +1151,7 @@ html, body {
     <div class="sheet-header">
       <div>
         <div class="sheet-title">⚙️ 设置</div>
-        <div style="font-size:10px;color:var(--text3);font-family:'DM Mono',monospace;margin-top:2px">PlantSteward v1.9.4</div>
+        <div style="font-size:10px;color:var(--text3);font-family:'DM Mono',monospace;margin-top:2px">PlantSteward v1.9.5</div>
       </div>
       <button class="btn btn-sm" onclick="closeSheet('sheet-settings')">关闭</button>
     </div>
@@ -2811,7 +2817,10 @@ function isSummer() {
 // 赤纬角：Spencer (1971) 傅里叶级数近似，精度优于简单正弦近似
 // 大气折射修正：太阳视圆面半径(0.2666°) + 标准大气折射(0.5667°) = 0.8333°
 // 即实际"日出"是太阳上边缘接触地平线，比几何日出早、比几何日落晚，共多出约6-8分钟
-function calcDaylightMinutes(date, lat) {
+//
+// calcSunInfo 返回完整信息：{ daylightMin, sunriseStr, sunsetStr }
+// 日出日落时刻基于太阳时角换算为当地时钟时间（含时区与经度修正）
+function calcSunInfo(date, lat, lon) {
   var start = new Date(date.getFullYear(), 0, 0);
   var n = Math.floor((date - start) / 86400000) + 1; // day of year
 
@@ -2821,14 +2830,46 @@ function calcDaylightMinutes(date, lat) {
     - 0.006758 * Math.cos(2*gamma)   + 0.000907 * Math.sin(2*gamma)
     - 0.002697 * Math.cos(3*gamma)   + 0.00148  * Math.sin(3*gamma);
 
+  // 时间方程（equation of time，分钟）—— 修正地球公转速度不均匀
+  var eqTime = 229.18 * (0.000075 + 0.001868*Math.cos(gamma)   - 0.032077*Math.sin(gamma)
+    - 0.014615*Math.cos(2*gamma) - 0.040849*Math.sin(2*gamma));
+
   var latRad = lat * Math.PI / 180;
   var zenith = 90.833 * Math.PI / 180; // 含大气折射+太阳视圆面修正
 
   var cosH = (Math.cos(zenith) - Math.sin(latRad)*Math.sin(decl)) / (Math.cos(latRad)*Math.cos(decl));
   cosH = Math.max(-1, Math.min(1, cosH));
-  var H = Math.acos(cosH);
-  var hours = 2 * H * 12 / Math.PI;
-  return Math.round(hours * 60);
+  var H = Math.acos(cosH); // 弧度
+  var Hdeg = H * 180 / Math.PI; // 时角（度）
+
+  var daylightMin = Math.round(2 * H * 12 / Math.PI * 60);
+
+  // 太阳正午（分钟，UTC）= 720 - 4×经度 - 时间方程
+  var solarNoonUTC = 720 - 4 * lon - eqTime;
+  var sunriseUTC = solarNoonUTC - 4 * Hdeg;
+  var sunsetUTC  = solarNoonUTC + 4 * Hdeg;
+
+  // 纽约时区偏移（夏令时3-11月为UTC-4，其余UTC-5）
+  var month = date.getMonth() + 1;
+  var isDST = month >= 3 && month <= 11; // 简化判断，覆盖夏令时主要月份
+  var tzOffset = isDST ? -4 : -5;
+
+  function toClockStr(utcMinutes) {
+    var localMin = utcMinutes + tzOffset * 60;
+    localMin = ((localMin % 1440) + 1440) % 1440; // 处理跨日
+    var h = Math.floor(localMin / 60);
+    var m = Math.round(localMin % 60);
+    if (m === 60) { m = 0; h += 1; }
+    var period = h < 12 ? '上午' : '下午';
+    var h12 = h % 12; if (h12 === 0) h12 = 12;
+    return period + ' ' + h12 + ':' + String(m).padStart(2,'0');
+  }
+
+  return {
+    daylightMin: daylightMin,
+    sunriseStr:  toClockStr(sunriseUTC),
+    sunsetStr:   toClockStr(sunsetUTC),
+  };
 }
 
 function formatDaylight(minutes) {
@@ -2836,6 +2877,8 @@ function formatDaylight(minutes) {
   var m = minutes % 60;
   return h + 'h' + String(m).padStart(2, '0') + 'm';
 }
+
+let lastSunInfo = null; // 缓存供 toggleDaylightDetail 使用
 
 function renderDateBar() {
   const now     = new Date();
@@ -2854,8 +2897,9 @@ function renderDateBar() {
   if (dateText) dateText.textContent = year + '年' + month + '月' + day + '日  ' + weekDay;
 
   if (dlBadge) {
-    var mins = calcDaylightMinutes(now, NYC_LAT);
-    dlBadge.textContent = '☀️ ' + formatDaylight(mins);
+    var info = calcSunInfo(now, NYC_LAT, NYC_LON);
+    lastSunInfo = info;
+    dlBadge.textContent = '☀️ ' + formatDaylight(info.daylightMin) + ' ▾';
   }
 
   if (badge) {
@@ -2869,6 +2913,24 @@ function renderDateBar() {
     };
     badge.style.borderColor = colors[season];
   }
+}
+
+// ── 日出日落详情气泡 展开/收起
+function toggleDaylightDetail() {
+  var panel = document.getElementById('daylight-detail');
+  if (!panel) return;
+  if (panel.style.display === 'block') {
+    panel.style.display = 'none';
+    return;
+  }
+  if (!lastSunInfo) return;
+  panel.innerHTML =
+    '<div style="display:flex;gap:14px">' +
+      '<div><span style="color:var(--text3)">🌅 日出</span> ' + lastSunInfo.sunriseStr + '</div>' +
+      '<div><span style="color:var(--text3)">🌇 日落</span> ' + lastSunInfo.sunsetStr + '</div>' +
+    '</div>' +
+    '<div style="margin-top:4px;color:var(--text3);font-size:9px">📍 布鲁克林 · 天文计算，含大气折射修正</div>';
+  panel.style.display = 'block';
 }
 
 // ── 季节变化检测（每次启动时调用）
