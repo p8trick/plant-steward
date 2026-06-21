@@ -80,6 +80,10 @@ html, body {
   -webkit-overflow-scrolling: touch;
 }
 .page.active { display: block; }
+#page-detail {
+  will-change: transform, opacity;
+  background: var(--bg);
+}
 
 /* ── Tab bar ── */
 #tabbar {
@@ -1151,7 +1155,7 @@ html, body {
     <div class="sheet-header">
       <div>
         <div class="sheet-title">⚙️ 设置</div>
-        <div style="font-size:10px;color:var(--text3);font-family:'DM Mono',monospace;margin-top:2px">PlantSteward v1.9.5</div>
+        <div style="font-size:10px;color:var(--text3);font-family:'DM Mono',monospace;margin-top:2px">PlantSteward v1.9.6</div>
       </div>
       <button class="btn btn-sm" onclick="closeSheet('sheet-settings')">关闭</button>
     </div>
@@ -2131,6 +2135,75 @@ function deletePlant() {
     saveDB();
     showPage('plants');
     showToast('已删除');
+  });
+}
+
+// ══════════════════════════════════════════
+//  EDGE SWIPE BACK GESTURE（详情页左边缘右滑返回）
+// ══════════════════════════════════════════
+function initSwipeBack() {
+  var page = document.getElementById('page-detail');
+  if (!page) return;
+
+  var startX = 0, startY = 0, currentX = 0;
+  var tracking = false;
+  var EDGE_ZONE   = 24;  // 触发区：左边缘24px内
+  var THRESHOLD   = 90;  // 触发返回所需滑动距离
+  var MAX_VERTICAL = 60; // 超过此纵向偏移视为滚动，取消手势
+
+  page.addEventListener('touchstart', function(e) {
+    var t = e.touches[0];
+    if (t.clientX <= EDGE_ZONE) {
+      startX = t.clientX;
+      startY = t.clientY;
+      currentX = startX;
+      tracking = true;
+      page.style.transition = 'none';
+    }
+  }, { passive: true });
+
+  page.addEventListener('touchmove', function(e) {
+    if (!tracking) return;
+    var t = e.touches[0];
+    var dx = t.clientX - startX;
+    var dy = Math.abs(t.clientY - startY);
+
+    if (dy > MAX_VERTICAL) { tracking = false; page.style.transform = ''; return; }
+    if (dx < 0) return; // 只响应右滑
+
+    currentX = dx;
+    var drag = Math.min(dx, 160);
+    page.style.transform = 'translateX(' + drag + 'px)';
+    page.style.opacity   = String(1 - drag / 320);
+  }, { passive: true });
+
+  page.addEventListener('touchend', function() {
+    if (!tracking) return;
+    tracking = false;
+    page.style.transition = 'transform .25s ease, opacity .25s ease';
+
+    if (currentX > THRESHOLD) {
+      // 触发返回：先滑出再切页
+      page.style.transform = 'translateX(100%)';
+      page.style.opacity   = '0';
+      setTimeout(function() {
+        showPage('plants');
+        page.style.transition = '';
+        page.style.transform  = '';
+        page.style.opacity    = '';
+      }, 200);
+    } else {
+      // 未达阈值：弹回原位
+      page.style.transform = '';
+      page.style.opacity   = '';
+    }
+  });
+
+  page.addEventListener('touchcancel', function() {
+    tracking = false;
+    page.style.transition = 'transform .2s ease, opacity .2s ease';
+    page.style.transform  = '';
+    page.style.opacity    = '';
   });
 }
 
@@ -3685,6 +3758,7 @@ try {
   document.querySelectorAll('.overlay').forEach(function(el) {
     el.addEventListener('click', function(e) { if (e.target === el) closeSheet(el.id); });
   });
+  initSwipeBack();
   renderDateBar();
   checkSeasonChange();
   renderPlants();
