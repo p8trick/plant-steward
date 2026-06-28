@@ -1160,7 +1160,7 @@ html, body {
     <div class="sheet-header">
       <div>
         <div class="sheet-title">⚙️ 设置</div>
-        <div style="font-size:10px;color:var(--text3);font-family:'DM Mono',monospace;margin-top:2px">PlantSteward v1.9.6</div>
+        <div style="font-size:10px;color:var(--text3);font-family:'DM Mono',monospace;margin-top:2px">PlantSteward v1.9.7</div>
       </div>
       <button class="btn btn-sm" onclick="closeSheet('sheet-settings')">关闭</button>
     </div>
@@ -1215,6 +1215,22 @@ html, body {
           <div class="radio-btn" id="rename-loc-outdoor" onclick="selectRenameLoc('outdoor')">🌤 室外</div>
         </div>
         <div id="rename-water-hint" style="margin-top:8px;font-size:11px;color:var(--accent);font-family:'DM Mono',monospace"></div>
+      </div>
+      <!-- 施肥周期调整 -->
+      <div class="form-group">
+        <label class="form-label">施肥周期调整</label>
+        <div id="rename-fert-ref" style="font-size:11px;color:var(--text3);font-family:'DM Mono',monospace;margin-bottom:8px"></div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+          <div>
+            <div style="font-size:11px;color:var(--text3);margin-bottom:4px">🌱 春夏（天）</div>
+            <input class="form-input" id="rename-fert-summer" type="number" min="0" placeholder="天数（0=停肥）">
+          </div>
+          <div>
+            <div style="font-size:11px;color:var(--text3);margin-bottom:4px">❄️ 秋冬（天）</div>
+            <input class="form-input" id="rename-fert-winter" type="number" min="0" placeholder="天数（0=停肥）">
+          </div>
+        </div>
+        <div style="margin-top:5px;font-size:10px;color:var(--text3)">0 = 当季停肥；留空则保持当前设置</div>
       </div>
       <button class="btn btn-accent" style="width:100%;padding:14px" onclick="saveRename()">保存</button>
     </div>
@@ -1366,21 +1382,41 @@ function waterStatus(plant) {
   return                    { cls: 'urgent', label: d + '天前' };
 }
 
+// 获取当前季节的施肥周期（0=停肥）
+function getFertCycle(plant) {
+  var summer = isSummer();
+  // 用户自定义值优先
+  if (summer && plant.fertCycleSummer !== undefined) return plant.fertCycleSummer;
+  if (!summer && plant.fertCycleWinter !== undefined) return plant.fertCycleWinter;
+  // 降级：用旧的 fertCycle 字段
+  return plant.fertCycle || 14;
+}
+
 function fertStatus(plant) {
-  const d = daysSince(plant.lastFert);
-  if (d === null) return { cls: 'never', label: '未记录' };
-  const cycle = plant.fertCycle || 14;
+  const d     = daysSince(plant.lastFert);
+  const cycle = getFertCycle(plant);
+
+  // 停肥季节
+  if (cycle === 0) return { cls: 'never', label: '当季建议停肥', stopFert: true };
+  if (d === null)  return { cls: 'never', label: '未记录' };
+
   const ratio = d / cycle;
-  if (ratio < 0.8)  return { cls: 'ok',     label: d + '天前' };
-  if (ratio < 1.2)  return { cls: 'warn',   label: d + '天前' };
-  return                    { cls: 'urgent', label: d + '天前' };
+  if (ratio < 0.8) return { cls: 'ok',     label: d + '天前' };
+  if (ratio < 1.2) return { cls: 'warn',   label: d + '天前' };
+  return               { cls: 'urgent', label: d + '天前' };
 }
 
 function cardUrgency(plant) {
   const w = waterStatus(plant).cls;
-  const f = fertStatus(plant).cls;
-  if (w === 'urgent' || f === 'urgent') return 'urgent';
-  if (w === 'warn'   || f === 'warn')   return 'warning';
+  const f = fertStatus(plant);
+  // 停肥季不计入紧急程度
+  if (f.stopFert) {
+    if (w === 'urgent') return 'urgent';
+    if (w === 'warn')   return 'warning';
+    return 'ok';
+  }
+  if (w === 'urgent' || f.cls === 'urgent') return 'urgent';
+  if (w === 'warn'   || f.cls === 'warn')   return 'warning';
   return 'ok';
 }
 
@@ -1487,8 +1523,8 @@ function selectRefPlant(name) {
   const summer = isSummer();
   const days   = selectedLoc === 'outdoor'
     ? (summer ? r.woi : r.wow) : (summer ? r.wii : r.wiw);
-  const fertMap = { moisture:14, normal:14, drought:45, herb:7, succulent:45 };
-  document.getElementById('add-fert-cycle').value = String(fertMap[r.waterType] || 14);
+  var fertMap = { moisture:14, normal:14, drought:45, herb:7, succulent:45 };
+  document.getElementById('add-fert-cycle').value = String(r.fertSummer || fertMap[r.waterType] || 14);
   document.getElementById('water-type-group').style.display = 'none';
   // 显示昵称输入框，预填参考库名
   document.getElementById('nickname-group').style.display = 'block';
@@ -1588,20 +1624,25 @@ function savePlant() {
 
   let waterType  = null;
   let waterCycle = null;
+  let fertCycleSummer = cycle;
+  let fertCycleWinter = cycle;
   if (matchedRefPlant) {
     waterType  = matchedRefPlant.waterType;
     waterCycle = { ii: matchedRefPlant.wii, iw: matchedRefPlant.wiw,
                    oi: matchedRefPlant.woi, ow: matchedRefPlant.wow };
+    fertCycleSummer = matchedRefPlant.fertSummer || cycle;
+    fertCycleWinter = matchedRefPlant.fertWinter !== undefined ? matchedRefPlant.fertWinter : cycle;
   } else {
     waterType = document.getElementById('add-water-type').value;
   }
 
   const plant = {
     id: genId(),
-    name:    displayName,  // 显示名（卡片上看到的）
-    refName: refName,      // 参考库关联名（用于数据匹配）
+    name:    displayName,
+    refName: refName,
     location: selectedLoc,
     fertCycle: cycle,
+    fertCycleSummer, fertCycleWinter,
     waterType, waterCycle,
     note: document.getElementById('add-note').value.trim(),
     lastWater: null, lastFert: null,
@@ -2094,17 +2135,29 @@ function openRename() {
   if (!plant) return;
   renameSelectedLoc = plant.location;
   document.getElementById('rename-input').value = plant.name;
-  // 显示参考库关联
   const refName = plant.refName && plant.refName !== plant.name ? plant.refName : null;
   document.getElementById('rename-refname').textContent = refName ? '关联参考库：' + refName : '';
-  // 设置位置按钮
   document.getElementById('rename-loc-indoor').classList.toggle('selected',  plant.location === 'indoor');
   document.getElementById('rename-loc-outdoor').classList.toggle('selected', plant.location === 'outdoor');
-  // 显示当前浇水周期
+  // 浇水提示
   const cycle  = getWaterCycle(plant);
   const season = isSummer() ? '春夏' : '秋冬';
   document.getElementById('rename-water-hint').textContent =
     '当前推荐每 ' + cycle + ' 天浇水（' + season + '）';
+  // 施肥周期
+  const fs = plant.fertCycleSummer !== undefined ? plant.fertCycleSummer : (plant.fertCycle || 14);
+  const fw = plant.fertCycleWinter !== undefined ? plant.fertCycleWinter : (plant.fertCycle || 14);
+  document.getElementById('rename-fert-summer').value = fs;
+  document.getElementById('rename-fert-winter').value = fw;
+  // 参考库建议值
+  const ref = REF_DATA.find(r => r.name === (plant.refName || plant.name));
+  const refHint = document.getElementById('rename-fert-ref');
+  if (ref && ref.fertSummer !== undefined) {
+    refHint.textContent = '参考库建议：春夏 ' + ref.fertSummer + ' 天 / 秋冬 ' +
+      (ref.fertWinter === 0 ? '停肥' : ref.fertWinter + ' 天');
+  } else {
+    refHint.textContent = '';
+  }
   openSheet('sheet-rename');
   setTimeout(function(){ document.getElementById('rename-input').focus(); }, 300);
 }
@@ -2117,11 +2170,17 @@ function saveRename() {
   const oldLoc  = plant.location;
   plant.name     = newName;
   plant.location = renameSelectedLoc;
+  // 施肥周期
+  const fsVal = document.getElementById('rename-fert-summer').value;
+  const fwVal = document.getElementById('rename-fert-winter').value;
+  if (fsVal !== '') plant.fertCycleSummer = parseInt(fsVal) || 0;
+  if (fwVal !== '') plant.fertCycleWinter = parseInt(fwVal) || 0;
+  // 同步 fertCycle 为当前季节值（兼容旧逻辑）
+  plant.fertCycle = getFertCycle(plant) || plant.fertCycle;
   saveDB();
   closeSheet('sheet-rename');
   renderDetail();
   renderPlants();
-  // 位置变了时给出提示
   if (oldLoc !== renameSelectedLoc) {
     const newCycle = getWaterCycle(plant);
     const label    = renameSelectedLoc === 'indoor' ? '已移入室内' : '已移至室外';
@@ -2532,7 +2591,7 @@ const REF_DATA = [
     ppfdComp:10, ppfdMin:30, ppfdRec:100, ppfdSat:400,
     dliMin:0.5, dliRec:2, dliSat:6, dataSrc:'v',
     tempMin:40, tempCool:60, tempWarm:85, tempMax:100,
-    waterType:'drought', wii:14, wiw:28, woi:10, wow:21,
+    fertSummer:42, fertWinter:0, waterType:'drought', wii:14, wiw:28, woi:10, wow:21,
     fertNote:'春夏每4-6周一次，秋冬停肥，低光照下每年1-2次即可',
     waterNote:'土壤完全干透后再浇，宁干勿湿，过度浇水是主要死因' },
 
@@ -2540,7 +2599,7 @@ const REF_DATA = [
     ppfdComp:15, ppfdMin:50, ppfdRec:150, ppfdSat:500,
     dliMin:1, dliRec:4, dliSat:10, dataSrc:'v',
     tempMin:45, tempCool:65, tempWarm:85, tempMax:95,
-    waterType:'normal', wii:7, wiw:12, woi:5, wow:9,
+    fertSummer:30, fertWinter:60, waterType:'normal', wii:7, wiw:12, woi:5, wow:9,
     fertNote:'生长季每月一次，秋冬减半',
     waterNote:'表土2cm干后浇透，耐旱能力强' },
 
@@ -2548,7 +2607,7 @@ const REF_DATA = [
     ppfdComp:15, ppfdMin:50, ppfdRec:200, ppfdSat:500,
     dliMin:1, dliRec:5, dliSat:10, dataSrc:'v',
     tempMin:50, tempCool:65, tempWarm:85, tempMax:95,
-    waterType:'normal', wii:7, wiw:12, woi:5, wow:9,
+    fertSummer:30, fertWinter:0, waterType:'normal', wii:7, wiw:12, woi:5, wow:9,
     fertNote:'生长季每月一次',
     waterNote:'表土干后浇透，避免积水' },
 
@@ -2556,7 +2615,7 @@ const REF_DATA = [
     ppfdComp:20, ppfdMin:80, ppfdRec:200, ppfdSat:600,
     dliMin:2, dliRec:5, dliSat:12, dataSrc:'e',
     tempMin:50, tempCool:65, tempWarm:85, tempMax:95,
-    waterType:'moisture', wii:5, wiw:8, woi:3, wow:6,
+    fertSummer:14, fertWinter:0, waterType:'moisture', wii:5, wiw:8, woi:3, wow:6,
     fertNote:'生长季每两周一次',
     waterNote:'保持土壤微湿，不耐长期干旱' },
 
@@ -2564,7 +2623,7 @@ const REF_DATA = [
     ppfdComp:15, ppfdMin:50, ppfdRec:150, ppfdSat:400,
     dliMin:1, dliRec:4, dliSat:8, dataSrc:'v',
     tempMin:45, tempCool:65, tempWarm:85, tempMax:95,
-    waterType:'moisture', wii:5, wiw:8, woi:3, wow:6,
+    fertSummer:45, fertWinter:0, waterType:'moisture', wii:5, wiw:8, woi:3, wow:6,
     fertNote:'生长季每6-8周一次',
     waterNote:'叶片微垂时浇水，用过滤水，叶片对氟敏感' },
 
@@ -2572,7 +2631,7 @@ const REF_DATA = [
     ppfdComp:20, ppfdMin:80, ppfdRec:250, ppfdSat:700,
     dliMin:2, dliRec:6, dliSat:14, dataSrc:'v',
     tempMin:35, tempCool:60, tempWarm:80, tempMax:90,
-    waterType:'normal', wii:7, wiw:12, woi:5, wow:9,
+    fertSummer:30, fertWinter:0, waterType:'normal', wii:7, wiw:12, woi:5, wow:9,
     fertNote:'生长季每月一次',
     waterNote:'表土干后浇透，较耐旱' },
 
@@ -2580,7 +2639,7 @@ const REF_DATA = [
     ppfdComp:20, ppfdMin:80, ppfdRec:200, ppfdSat:500,
     dliMin:2, dliRec:5, dliSat:10, dataSrc:'e',
     tempMin:55, tempCool:65, tempWarm:80, tempMax:90,
-    waterType:'moisture', wii:4, wiw:6, woi:3, wow:5,
+    fertSummer:30, fertWinter:0, waterType:'moisture', wii:4, wiw:6, woi:3, wow:5,
     fertNote:'生长季每月一次，浓度减半',
     waterNote:'极不耐旱，土壤始终保持湿润，缺水叶片迅速萎蔫' },
 
@@ -2588,7 +2647,7 @@ const REF_DATA = [
     ppfdComp:20, ppfdMin:80, ppfdRec:250, ppfdSat:600,
     dliMin:2, dliRec:6, dliSat:12, dataSrc:'v',
     tempMin:55, tempCool:65, tempWarm:80, tempMax:90,
-    waterType:'moisture', wii:4, wiw:7, woi:3, wow:5,
+    fertSummer:30, fertWinter:0, waterType:'moisture', wii:4, wiw:7, woi:3, wow:5,
     fertNote:'生长季每月一次，浓度减半',
     waterNote:'喜湿润，必须用过滤水或静置水，对氯和氟极敏感' },
 
@@ -2597,7 +2656,7 @@ const REF_DATA = [
     ppfdComp:30, ppfdMin:150, ppfdRec:400, ppfdSat:800,
     dliMin:3, dliRec:10, dliSat:18, dataSrc:'v',
     tempMin:45, tempCool:65, tempWarm:85, tempMax:95,
-    waterType:'normal', wii:8, wiw:14, woi:5, wow:10,
+    fertSummer:30, fertWinter:0, waterType:'normal', wii:8, wiw:14, woi:5, wow:10,
     fertNote:'生长季每月一次，秋冬停肥',
     waterNote:'表土2-3cm干透再浇，盆底不可积水' },
 
@@ -2605,7 +2664,7 @@ const REF_DATA = [
     ppfdComp:30, ppfdMin:150, ppfdRec:500, ppfdSat:1000,
     dliMin:3, dliRec:12, dliSat:20, dataSrc:'v',
     tempMin:50, tempCool:60, tempWarm:85, tempMax:95,
-    waterType:'normal', wii:7, wiw:12, woi:5, wow:9,
+    fertSummer:30, fertWinter:0, waterType:'normal', wii:7, wiw:12, woi:5, wow:9,
     fertNote:'生长季每月一次',
     waterNote:'表土干后浇透，叶片定期擦拭提升光合效率' },
 
@@ -2613,7 +2672,7 @@ const REF_DATA = [
     ppfdComp:50, ppfdMin:200, ppfdRec:600, ppfdSat:1200,
     dliMin:5, dliRec:15, dliSat:25, dataSrc:'v',
     tempMin:55, tempCool:65, tempWarm:85, tempMax:95,
-    waterType:'normal', wii:7, wiw:14, woi:5, wow:10,
+    fertSummer:30, fertWinter:0, waterType:'normal', wii:7, wiw:14, woi:5, wow:10,
     fertNote:'生长季每月一次，冬季停肥',
     waterNote:'表土3cm干后浇透，忌频繁移动，位置不稳易落叶' },
 
@@ -2621,7 +2680,7 @@ const REF_DATA = [
     ppfdComp:25, ppfdMin:100, ppfdRec:400, ppfdSat:900,
     dliMin:2, dliRec:10, dliSat:18, dataSrc:'v',
     tempMin:50, tempCool:65, tempWarm:85, tempMax:95,
-    waterType:'normal', wii:7, wiw:12, woi:5, wow:9,
+    fertSummer:30, fertWinter:0, waterType:'normal', wii:7, wiw:12, woi:5, wow:9,
     fertNote:'生长季每月一次',
     waterNote:'表土2cm干后浇水，叶片出现黄边通常为过浇' },
 
@@ -2629,7 +2688,7 @@ const REF_DATA = [
     ppfdComp:10, ppfdMin:50, ppfdRec:300, ppfdSat:600,
     dliMin:1, dliRec:7, dliSat:14, dataSrc:'v',
     tempMin:45, tempCool:60, tempWarm:80, tempMax:90,
-    waterType:'drought', wii:14, wiw:28, woi:10, wow:21,
+    fertSummer:60, fertWinter:0, waterType:'drought', wii:14, wiw:28, woi:10, wow:21,
     fertNote:'生长季每2-3个月一次，极耐贫瘠',
     waterNote:'土壤完全干透再浇，块茎储水能力极强，过浇必烂根' },
 
@@ -2637,7 +2696,7 @@ const REF_DATA = [
     ppfdComp:20, ppfdMin:80, ppfdRec:250, ppfdSat:600,
     dliMin:2, dliRec:5, dliSat:10, dataSrc:'e',
     tempMin:55, tempCool:65, tempWarm:90, tempMax:100,
-    waterType:'moisture', wii:4, wiw:7, woi:3, wow:5,
+    fertSummer:30, fertWinter:60, waterType:'moisture', wii:4, wiw:7, woi:3, wow:5,
     fertNote:'水培每月换水时加一两滴液肥，土培每月一次',
     waterNote:'水培保持水位2-5cm，避免直射阳光导致水藻滋生' },
 
@@ -2645,7 +2704,7 @@ const REF_DATA = [
     ppfdComp:30, ppfdMin:150, ppfdRec:400, ppfdSat:900,
     dliMin:3, dliRec:10, dliSat:18, dataSrc:'e',
     tempMin:45, tempCool:60, tempWarm:85, tempMax:95,
-    waterType:'normal', wii:8, wiw:14, woi:5, wow:10,
+    fertSummer:30, fertWinter:0, waterType:'normal', wii:8, wiw:14, woi:5, wow:10,
     fertNote:'生长季每月一次',
     waterNote:'表土干后浇水，耐旱性较好' },
 
@@ -2653,7 +2712,7 @@ const REF_DATA = [
     ppfdComp:20, ppfdMin:80, ppfdRec:250, ppfdSat:600,
     dliMin:2, dliRec:5, dliSat:10, dataSrc:'e',
     tempMin:50, tempCool:60, tempWarm:75, tempMax:85,
-    waterType:'moisture', wii:3, wiw:5, woi:2, wow:4,
+    fertSummer:30, fertWinter:0, waterType:'moisture', wii:3, wiw:5, woi:2, wow:4,
     fertNote:'生长季每月一次，浓度减半',
     waterNote:'极不耐旱，保持持续湿润，空气湿度低时叶片迅速焦边' },
 
@@ -2661,7 +2720,7 @@ const REF_DATA = [
     ppfdComp:25, ppfdMin:100, ppfdRec:350, ppfdSat:800,
     dliMin:2, dliRec:8, dliSat:16, dataSrc:'e',
     tempMin:50, tempCool:65, tempWarm:85, tempMax:95,
-    waterType:'normal', wii:7, wiw:12, woi:5, wow:9,
+    fertSummer:30, fertWinter:0, waterType:'normal', wii:7, wiw:12, woi:5, wow:9,
     fertNote:'生长季每月一次',
     waterNote:'表土干后浇水' },
 
@@ -2670,7 +2729,7 @@ const REF_DATA = [
     ppfdComp:30, ppfdMin:150, ppfdRec:500, ppfdSat:1000,
     dliMin:4, dliRec:12, dliSat:22, dataSrc:'e',
     tempMin:40, tempCool:60, tempWarm:85, tempMax:95,
-    waterType:'moisture', wii:3, wiw:5, woi:2, wow:4,
+    fertSummer:30, fertWinter:0, waterType:'moisture', wii:3, wiw:5, woi:2, wow:4,
     fertNote:'生长季每月一次',
     waterNote:'喜湿，可直接水培，土培需保持土壤持续湿润' },
 
@@ -2678,7 +2737,7 @@ const REF_DATA = [
     ppfdComp:50, ppfdMin:300, ppfdRec:800, ppfdSat:1500,
     dliMin:8, dliRec:18, dliSat:30, dataSrc:'v',
     tempMin:40, tempCool:60, tempWarm:85, tempMax:100,
-    waterType:'normal', wii:5, wiw:10, woi:3, wow:7,
+    fertSummer:14, fertWinter:30, waterType:'normal', wii:5, wiw:10, woi:3, wow:7,
     fertNote:'花期前每两周一次磷钾肥，夏季生长旺盛期可每周一次',
     waterNote:'表土干后浇透，花期保持湿润，冬季减少浇水' },
 
@@ -2686,7 +2745,7 @@ const REF_DATA = [
     ppfdComp:50, ppfdMin:300, ppfdRec:700, ppfdSat:1400,
     dliMin:8, dliRec:16, dliSat:28, dataSrc:'e',
     tempMin:50, tempCool:65, tempWarm:90, tempMax:100,
-    waterType:'normal', wii:5, wiw:10, woi:3, wow:7,
+    fertSummer:14, fertWinter:0, waterType:'normal', wii:5, wiw:10, woi:3, wow:7,
     fertNote:'生长季每两周一次，花期前增加磷钾',
     waterNote:'保持土壤微湿，忌积水，冬季移入室内越冬' },
 
@@ -2694,7 +2753,7 @@ const REF_DATA = [
     ppfdComp:40, ppfdMin:200, ppfdRec:600, ppfdSat:1200,
     dliMin:6, dliRec:14, dliSat:24, dataSrc:'v',
     tempMin:45, tempCool:60, tempWarm:75, tempMax:90,
-    waterType:'moisture', wii:4, wiw:7, woi:3, wow:5,
+    fertSummer:14, fertWinter:0, waterType:'moisture', wii:4, wiw:7, woi:3, wow:5,
     fertNote:'花期前每两周一次酸性肥，pH保持5.0-6.0',
     waterNote:'保持湿润，必须用软水或雨水，硬水导致叶片黄化' },
 
@@ -2703,7 +2762,7 @@ const REF_DATA = [
     ppfdComp:30, ppfdMin:150, ppfdRec:500, ppfdSat:1200,
     dliMin:3, dliRec:12, dliSat:22, dataSrc:'v',
     tempMin:40, tempCool:55, tempWarm:85, tempMax:100,
-    waterType:'succulent', wii:14, wiw:28, woi:10, wow:21,
+    fertSummer:60, fertWinter:0, waterType:'succulent', wii:14, wiw:28, woi:10, wow:21,
     fertNote:'一年2-3次即可，春夏施，施肥过多叶片徒长变软',
     waterNote:'完全干透后再浇，宁干勿湿，冬季几乎停水' },
 
@@ -2711,7 +2770,7 @@ const REF_DATA = [
     ppfdComp:15, ppfdMin:80, ppfdRec:300, ppfdSat:600,
     dliMin:2, dliRec:7, dliSat:12, dataSrc:'v',
     tempMin:40, tempCool:55, tempWarm:80, tempMax:95,
-    waterType:'succulent', wii:14, wiw:28, woi:10, wow:21,
+    fertSummer:60, fertWinter:0, waterType:'succulent', wii:14, wiw:28, woi:10, wow:21,
     fertNote:'生长季每2-3个月一次，浓度减半',
     waterNote:'土壤干透后浇水，避免叶心积水导致腐烂' },
 
@@ -2719,7 +2778,7 @@ const REF_DATA = [
     ppfdComp:20, ppfdMin:100, ppfdRec:400, ppfdSat:900,
     dliMin:3, dliRec:10, dliSat:18, dataSrc:'v',
     tempMin:45, tempCool:60, tempWarm:75, tempMax:90,
-    waterType:'normal', wii:7, wiw:14, woi:5, wow:10,
+    fertSummer:30, fertWinter:30, waterType:'normal', wii:7, wiw:14, woi:5, wow:10,
     fertNote:'花芽分化前停肥停水促进开花，其余生长期每月一次',
     waterNote:'见干见湿，花期保持湿润，花蕾期避免移动' },
 
@@ -2728,7 +2787,7 @@ const REF_DATA = [
     ppfdComp:40, ppfdMin:200, ppfdRec:600, ppfdSat:1200,
     dliMin:6, dliRec:14, dliSat:22, dataSrc:'v',
     tempMin:32, tempCool:55, tempWarm:75, tempMax:90,
-    waterType:'moisture', wii:3, wiw:5, woi:2, wow:4,
+    fertSummer:30, fertWinter:0, waterType:'moisture', wii:3, wiw:5, woi:2, wow:4,
     fertNote:'盆栽生长季每月一次，过多施肥降低香味和精油含量',
     waterNote:'保持土壤持续湿润，缺水叶片萎蔫快，室外夏季每天检查' },
 
@@ -2736,7 +2795,7 @@ const REF_DATA = [
     ppfdComp:50, ppfdMin:250, ppfdRec:600, ppfdSat:1200,
     dliMin:8, dliRec:16, dliSat:24, dataSrc:'v',
     tempMin:45, tempCool:60, tempWarm:85, tempMax:95,
-    waterType:'herb', wii:3, wiw:5, woi:2, wow:3,
+    fertSummer:14, fertWinter:0, waterType:'herb', wii:3, wiw:5, woi:2, wow:3,
     fertNote:'每两周一次氮肥为主，每次采摘后施肥促进再生',
     waterNote:'保持湿润但忌积水，早晨浇水，怕冷不耐霜冻' },
 
@@ -2744,7 +2803,7 @@ const REF_DATA = [
     ppfdComp:50, ppfdMin:300, ppfdRec:800, ppfdSat:1600,
     dliMin:8, dliRec:18, dliSat:30, dataSrc:'v',
     tempMin:20, tempCool:55, tempWarm:80, tempMax:95,
-    waterType:'drought', wii:10, wiw:18, woi:7, wow:14,
+    fertSummer:30, fertWinter:0, waterType:'drought', wii:10, wiw:18, woi:7, wow:14,
     fertNote:'生长季每月一次，少肥反而香味更浓郁',
     waterNote:'土壤干透后浇水，耐旱怕涝，地中海原生植物' },
 
@@ -2752,7 +2811,7 @@ const REF_DATA = [
     ppfdComp:30, ppfdMin:150, ppfdRec:500, ppfdSat:1000,
     dliMin:6, dliRec:12, dliSat:20, dataSrc:'e',
     tempMin:20, tempCool:50, tempWarm:85, tempMax:95,
-    waterType:'moisture', wii:3, wiw:5, woi:2, wow:4,
+    fertSummer:14, fertWinter:0, waterType:'moisture', wii:3, wiw:5, woi:2, wow:4,
     fertNote:'每次割后施一次氮肥，促进快速再生',
     waterNote:'保持土壤湿润，收割前3天停水提升品质' },
 
@@ -2760,7 +2819,7 @@ const REF_DATA = [
     ppfdComp:30, ppfdMin:150, ppfdRec:500, ppfdSat:900,
     dliMin:5, dliRec:12, dliSat:18, dataSrc:'v',
     tempMin:25, tempCool:45, tempWarm:70, tempMax:80,
-    waterType:'herb', wii:3, wiw:5, woi:2, wow:3,
+    fertSummer:30, fertWinter:0, waterType:'herb', wii:3, wiw:5, woi:2, wow:3,
     fertNote:'每月一次，少量即可，多肥导致抽薹',
     waterNote:'保持湿润，怕热超25°C抽薹，夏季遮阴种植' },
 
@@ -2768,7 +2827,7 @@ const REF_DATA = [
     ppfdComp:30, ppfdMin:150, ppfdRec:500, ppfdSat:1000,
     dliMin:6, dliRec:12, dliSat:20, dataSrc:'e',
     tempMin:40, tempCool:60, tempWarm:85, tempMax:95,
-    waterType:'herb', wii:3, wiw:5, woi:2, wow:3,
+    fertSummer:14, fertWinter:0, waterType:'herb', wii:3, wiw:5, woi:2, wow:3,
     fertNote:'每两周一次，氮肥为主促进叶片生长',
     waterNote:'保持湿润，高温高湿生长旺盛' },
 
@@ -2776,7 +2835,7 @@ const REF_DATA = [
     ppfdComp:60, ppfdMin:300, ppfdRec:800, ppfdSat:1600,
     dliMin:12, dliRec:22, dliSat:35, dataSrc:'v',
     tempMin:35, tempCool:60, tempWarm:85, tempMax:95,
-    waterType:'herb', wii:2, wiw:4, woi:1, wow:3,
+    fertSummer:10, fertWinter:0, waterType:'herb', wii:2, wiw:4, woi:1, wow:3,
     fertNote:'幼苗期每两周一次，结果期每7-10天一次磷钾肥为主',
     waterNote:'均匀浇水最重要，忽干忽湿导致裂果和脐腐病' },
 
@@ -2784,7 +2843,7 @@ const REF_DATA = [
     ppfdComp:40, ppfdMin:200, ppfdRec:600, ppfdSat:1200,
     dliMin:8, dliRec:14, dliSat:22, dataSrc:'v',
     tempMin:28, tempCool:50, tempWarm:75, tempMax:85,
-    waterType:'herb', wii:3, wiw:5, woi:2, wow:4,
+    fertSummer:21, fertWinter:0, waterType:'herb', wii:3, wiw:5, woi:2, wow:4,
     fertNote:'花前和采摘后各施一次，避免春季过度施氮导致叶多果少',
     waterNote:'保持湿润，避免积水，果实不可沾水以防腐烂' },
 
@@ -2792,7 +2851,7 @@ const REF_DATA = [
     ppfdComp:50, ppfdMin:250, ppfdRec:700, ppfdSat:1400,
     dliMin:8, dliRec:18, dliSat:28, dataSrc:'v',
     tempMin:40, tempCool:65, tempWarm:85, tempMax:95,
-    waterType:'herb', wii:3, wiw:5, woi:2, wow:4,
+    fertSummer:14, fertWinter:0, waterType:'herb', wii:3, wiw:5, woi:2, wow:4,
     fertNote:'每两周一次，结果期磷钾为主，氮肥过多叶茂果少',
     waterNote:'表土干后浇水，轻度水分胁迫可提高辣度' },
 
@@ -2800,7 +2859,7 @@ const REF_DATA = [
     ppfdComp:20, ppfdMin:100, ppfdRec:250, ppfdSat:600,
     dliMin:5, dliRec:12, dliSat:17, dataSrc:'v',
     tempMin:28, tempCool:45, tempWarm:70, tempMax:80,
-    waterType:'herb', wii:2, wiw:4, woi:1, wow:3,
+    fertSummer:14, fertWinter:0, waterType:'herb', wii:2, wiw:4, woi:1, wow:3,
     fertNote:'每两周一次氮肥，生长快消耗大',
     waterNote:'保持湿润，温度超25°C停止生长并抽薹，夏季不适合种植' },
 
@@ -2809,7 +2868,7 @@ const REF_DATA = [
     ppfdComp:20, ppfdMin:100, ppfdRec:300, ppfdSat:700,
     dliMin:3, dliRec:8, dliSat:14, dataSrc:'v',
     tempMin:50, tempCool:65, tempWarm:75, tempMax:85,
-    waterType:'normal', wii:7, wiw:10, woi:5, wow:8,
+    fertSummer:14, fertWinter:30, waterType:'normal', wii:7, wiw:10, woi:5, wow:8,
     fertNote:'生长季每两周一次专用肥（氮磷钾均衡偏高磷）',
     waterNote:'底部浇水，叶片绝对不可沾水，水滴导致叶片永久褐斑' },
 
@@ -2817,7 +2876,7 @@ const REF_DATA = [
     ppfdComp:25, ppfdMin:150, ppfdRec:500, ppfdSat:1000,
     dliMin:4, dliRec:12, dliSat:20, dataSrc:'v',
     tempMin:40, tempCool:60, tempWarm:80, tempMax:90,
-    waterType:'drought', wii:10, wiw:18, woi:7, wow:14,
+    fertSummer:14, fertWinter:0, waterType:'drought', wii:10, wiw:18, woi:7, wow:14,
     fertNote:'花期前每两周一次磷钾肥促花，花期和休眠期停肥',
     waterNote:'土壤干透后浇水，多肉质叶片储水，过浇烂根' },
 
@@ -2825,7 +2884,7 @@ const REF_DATA = [
     ppfdComp:40, ppfdMin:200, ppfdRec:600, ppfdSat:1200,
     dliMin:6, dliRec:14, dliSat:22, dataSrc:'v',
     tempMin:32, tempCool:55, tempWarm:75, tempMax:90,
-    waterType:'normal', wii:5, wiw:10, woi:3, wow:7,
+    fertSummer:14, fertWinter:0, waterType:'normal', wii:5, wiw:10, woi:3, wow:7,
     fertNote:'生长季每两周一次，以磷钾为主促进开花',
     waterNote:'表土干后浇水，耐旱怕涝，过湿茎部易腐烂' },
 
@@ -2833,7 +2892,7 @@ const REF_DATA = [
     ppfdComp:15, ppfdMin:80, ppfdRec:250, ppfdSat:500,
     dliMin:2, dliRec:6, dliSat:10, dataSrc:'v',
     tempMin:55, tempCool:65, tempWarm:80, tempMax:90,
-    waterType:'normal', wii:7, wiw:14, woi:5, wow:10,
+    fertSummer:14, fertWinter:30, waterType:'normal', wii:7, wiw:14, woi:5, wow:10,
     fertNote:'生长季每两周一次兰花专用肥，花期停肥，花后修剪促二次开花',
     waterNote:'水苔或树皮基质干透后浇水，花心不可积水，忌积水烂根' },
 ];
