@@ -1338,7 +1338,18 @@ function showPage(name) {
 // ══════════════════════════════════════════
 function daysSince(isoStr) {
   if (!isoStr) return null;
-  return Math.floor((Date.now() - new Date(isoStr).getTime()) / 86400000);
+  return (Date.now() - new Date(isoStr).getTime()) / 86400000; // 返回浮点数
+}
+
+// 人性化时间标签：24小时内显示小时，之后显示天数
+function timeSinceLabel(isoStr) {
+  if (!isoStr) return null;
+  var ms    = Date.now() - new Date(isoStr).getTime();
+  var hours = ms / 3600000;
+  if (hours < 1)    return '刚刚';
+  if (hours < 24)   return Math.floor(hours) + '小时前';
+  var days = Math.floor(ms / 86400000);
+  return days + '天前';
 }
 
 // 默认浇水周期（无 waterCycle 时按 waterType 降级）
@@ -1377,18 +1388,17 @@ function waterStatus(plant) {
     return { cls: 'never', label: '⚠️ 需重设' };
   const cycle = getWaterCycle(plant);
   const ratio = d / cycle;
-  if (ratio < 0.8)  return { cls: 'ok',     label: d + '天前' };
-  if (ratio < 1.2)  return { cls: 'warn',   label: d + '天前' };
-  return                    { cls: 'urgent', label: d + '天前' };
+  const label = timeSinceLabel(plant.lastWater);
+  if (ratio < 0.8)  return { cls: 'ok',     label };
+  if (ratio < 1.2)  return { cls: 'warn',   label };
+  return                    { cls: 'urgent', label };
 }
 
 // 获取当前季节的施肥周期（0=停肥）
 function getFertCycle(plant) {
   var summer = isSummer();
-  // 用户自定义值优先
   if (summer && plant.fertCycleSummer !== undefined) return plant.fertCycleSummer;
   if (!summer && plant.fertCycleWinter !== undefined) return plant.fertCycleWinter;
-  // 降级：用旧的 fertCycle 字段
   return plant.fertCycle || 14;
 }
 
@@ -1396,14 +1406,14 @@ function fertStatus(plant) {
   const d     = daysSince(plant.lastFert);
   const cycle = getFertCycle(plant);
 
-  // 停肥季节
   if (cycle === 0) return { cls: 'never', label: '当季建议停肥', stopFert: true };
   if (d === null)  return { cls: 'never', label: '未记录' };
 
   const ratio = d / cycle;
-  if (ratio < 0.8) return { cls: 'ok',     label: d + '天前' };
-  if (ratio < 1.2) return { cls: 'warn',   label: d + '天前' };
-  return               { cls: 'urgent', label: d + '天前' };
+  const label = timeSinceLabel(plant.lastFert);
+  if (ratio < 0.8) return { cls: 'ok',     label };
+  if (ratio < 1.2) return { cls: 'warn',   label };
+  return               { cls: 'urgent', label };
 }
 
 function cardUrgency(plant) {
@@ -1435,16 +1445,21 @@ function renderPlants() {
   label.textContent = sorted.length + ' 盆植物';
   list.innerHTML = sorted.map(p => {
     const w = waterStatus(p), f = fertStatus(p), urg = cardUrgency(p);
-    const needsSetup = !p.waterCycle && !p.waterType;
-    const cycle = needsSetup ? null : getWaterCycle(p);
-    const tempWarn = getTempWarning(p);
+    const needsSetup  = !p.waterCycle && !p.waterType;
+    const waterCycle  = needsSetup ? null : getWaterCycle(p);
+    const fertCycle   = getFertCycle(p);
+    const tempWarn    = getTempWarning(p);
+    const fertTag     = fertCycle === 0
+      ? '<span class="tag" style="color:var(--text3)">🌿 停肥季</span>'
+      : '<span class="tag">🌿 每' + fertCycle + '天</span>';
     return `<div class="plant-card ${urg}" onclick="openDetail('${p.id}')">
       <div class="card-top">
         <div>
           <div class="card-name">${p.name}</div>
           <div class="card-tags">
             <span class="tag ${p.location}">${p.location === 'indoor' ? '🏠 室内' : '🌤 室外'}</span>
-            ${needsSetup ? '<span class="tag" style="border-color:var(--yellow);color:var(--yellow)">⚠️ 请重新添加</span>' : '<span class="tag">💧 每' + cycle + '天</span>'}
+            ${needsSetup ? '<span class="tag" style="border-color:var(--yellow);color:var(--yellow)">⚠️ 请重新添加</span>' : '<span class="tag">💧 每' + waterCycle + '天</span>'}
+            ${needsSetup ? '' : fertTag}
           </div>
           ${tempWarn}
         </div>
@@ -1693,7 +1708,7 @@ function renderDetail() {
       <div class="detail-name">${plant.name}</div>
       <div class="card-tags">
         <span class="tag ${plant.location}">${plant.location === 'indoor' ? '🏠 室内' : '🌤 室外'}</span>
-        <span class="tag">施肥周期 ${plant.fertCycle}天</span>
+        ${getFertCycle(plant) === 0 ? '<span class="tag" style="color:var(--text3)">🌿 停肥季</span>' : '<span class="tag">🌿 施肥每' + getFertCycle(plant) + '天</span>'}
         <span class="tag" style="border-color:rgba(85,185,225,.4);color:#5bb9e1">💧 推荐每${waterCycle}天</span>
       </div>
       ${plant.note ? '<div style="margin-top:10px;font-size:12px;color:var(--text2);font-style:italic">' + plant.note + '</div>' : ''}
@@ -2032,7 +2047,6 @@ function todayLogged(plantId, type) {
            new Date(l.date).toDateString() === today;
   });
 }
-
 function quickLog(type) {
   const plant = db.plants.find(p => p.id === currentPlantId);
   if (!plant) return;
@@ -3400,8 +3414,8 @@ function renderStats() {
 
   var maxUnwatered = { plant:null, days:0 };
   plants.forEach(function(p){
-    var d = daysSince(p.lastWater);
-    if (d!==null && d > maxUnwatered.days) maxUnwatered = { plant:p, days:d };
+    var d = Math.floor(daysSince(p.lastWater) || 0);
+    if (d > maxUnwatered.days) maxUnwatered = { plant:p, days:d };
   });
 
   var catCount = {}, locCount = { indoor:0, outdoor:0 };
