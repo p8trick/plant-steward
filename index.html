@@ -928,6 +928,13 @@ html, body {
             </div>
           </div>
           <div id="od-detail-text" style="margin-top:10px;font-size:11px;color:var(--text3);font-family:'DM Mono',monospace;line-height:1.8"></div>
+          <!-- 保存到植物 -->
+          <div style="margin-top:12px;display:flex;align-items:center;gap:8px">
+            <select id="od-save-plant" class="form-input form-select" style="flex:1;font-size:12px">
+              <option value="">📌 保存到植物…</option>
+            </select>
+            <button class="btn btn-sm" onclick="saveLightEnvOutdoor()" style="white-space:nowrap">保存</button>
+          </div>
         </div>
       </div>
     </div>
@@ -949,6 +956,13 @@ html, body {
         PPFD = LUX × 系数<br>
         DLI = PPFD × 小时 × 3.6 ÷ 1000<br>
         <span style="color:var(--accent2)">DLI 单位：mol/m²/day</span>
+      </div>
+      <!-- 补光灯 保存到植物 -->
+      <div style="margin-top:10px;display:flex;align-items:center;gap:8px">
+        <select id="grow-save-plant" class="form-input form-select" style="flex:1;font-size:12px">
+          <option value="">📌 保存到植物…</option>
+        </select>
+        <button class="btn btn-sm" onclick="saveLightEnvGrow()" style="white-space:nowrap">保存</button>
       </div>
     </div>
   </div>
@@ -1160,7 +1174,7 @@ html, body {
     <div class="sheet-header">
       <div>
         <div class="sheet-title">⚙️ 设置</div>
-        <div style="font-size:10px;color:var(--text3);font-family:'DM Mono',monospace;margin-top:2px">PlantSteward v1.9.7</div>
+        <div style="font-size:10px;color:var(--text3);font-family:'DM Mono',monospace;margin-top:2px">PlantSteward v1.9.8</div>
       </div>
       <button class="btn btn-sm" onclick="closeSheet('sheet-settings')">关闭</button>
     </div>
@@ -1331,6 +1345,7 @@ function showPage(name) {
   if (name === 'plants') renderPlants();
   if (name === 'ref') renderRef();
   if (name === 'stats') renderStats();
+  if (name === 'light') populateSavePlantSelects();
 }
 
 // ══════════════════════════════════════════
@@ -1744,6 +1759,9 @@ function renderDetail() {
       </button>
     </div>
 
+    <!-- 光照环境 -->
+    <div id="light-env-section"></div>
+
     <!-- ── 图表区 ── -->
     <div class="chart-section">
       <div class="chart-title">📈 浇水间隔趋势（近90天）</div>
@@ -1802,6 +1820,7 @@ function renderDetail() {
 
   // 渲染图表（DOM 插入后执行）
   requestAnimationFrame(() => {
+    renderLightEnvSection(plant);
     drawWaterIntervalChart(plant, logs);
     drawFertIntervalChart(plant, logs);
     drawCalendarChart(plant, logs);
@@ -3655,6 +3674,180 @@ function deleteNote(id) {
   var el = document.getElementById('note-list');
   if (el) el.innerHTML = renderNoteList(currentPlantId);
   showToast('已删除笔记');
+}
+
+// ══════════════════════════════════════════
+//  LIGHT ENVIRONMENT
+// ══════════════════════════════════════════
+
+// 填充「保存到植物」下拉列表
+function populateSavePlantSelects() {
+  var ids = ['od-save-plant', 'grow-save-plant'];
+  ids.forEach(function(id) {
+    var sel = document.getElementById(id);
+    if (!sel) return;
+    // 保留第一个 placeholder option
+    while (sel.options.length > 1) sel.remove(1);
+    db.plants.forEach(function(p) {
+      var opt = document.createElement('option');
+      opt.value = p.id;
+      opt.textContent = p.name;
+      sel.appendChild(opt);
+    });
+  });
+}
+
+// 保存户外自然光参数到植物
+function saveLightEnvOutdoor() {
+  var sel = document.getElementById('od-save-plant');
+  if (!sel || !sel.value) { showToast('请先选择植物'); return; }
+  var plant = db.plants.find(function(p){ return p.id === sel.value; });
+  if (!plant) return;
+
+  var month      = parseInt(document.getElementById('od-month').value);
+  var startStr   = document.getElementById('od-start').value;
+  var endStr     = document.getElementById('od-end').value;
+  var diffuseHrs = parseFloat(document.getElementById('od-diffuse').value) || 0;
+  var skyMode    = window.skyMode || 'typical';
+  var totalDLI   = parseFloat(document.getElementById('od-total-dli').textContent) || 0;
+
+  plant.lightEnv = {
+    type:       'outdoor',
+    month:      month,
+    startH:     startStr,
+    endH:       endStr,
+    diffuseHrs: diffuseHrs,
+    skyMode:    skyMode,
+    savedAt:    new Date().toISOString(),
+  };
+  saveDB();
+  showToast('✓ 已保存光照环境到「' + plant.name + '」');
+  sel.value = '';
+}
+
+// 保存补光灯参数到植物
+function saveLightEnvGrow() {
+  var sel = document.getElementById('grow-save-plant');
+  if (!sel || !sel.value) { showToast('请先选择植物'); return; }
+  var plant = db.plants.find(function(p){ return p.id === sel.value; });
+  if (!plant) return;
+
+  // 从补光灯各测量点汇总
+  var rows = document.querySelectorAll('.calc-row');
+  var points = [];
+  var totalDLI = 0;
+  rows.forEach(function(row) {
+    var luxEl  = row.querySelector('.lux-input');
+    var hrsEl  = row.querySelector('.hrs-input');
+    var nameEl = row.querySelector('.name-input');
+    var dliEl  = row.querySelector('.dli-val');
+    if (!luxEl || !hrsEl) return;
+    var lux  = parseFloat(luxEl.value) || 0;
+    var hrs  = parseFloat(hrsEl.value) || 0;
+    var coeff = parseFloat(document.getElementById('coeff-input').value) || 0.0185;
+    var ppfd = lux * coeff;
+    var dli  = ppfd * hrs * 3.6 / 1000;
+    totalDLI += dli;
+    points.push({ name: nameEl ? nameEl.value : '', lux, hrs, ppfd: Math.round(ppfd), dli: Math.round(dli*100)/100 });
+  });
+
+  plant.lightEnv = {
+    type:     'grow',
+    coeff:    parseFloat(document.getElementById('coeff-input').value) || 0.0185,
+    points:   points,
+    totalDLI: Math.round(totalDLI * 100) / 100,
+    savedAt:  new Date().toISOString(),
+  };
+  saveDB();
+  showToast('✓ 已保存光照环境到「' + plant.name + '」');
+  sel.value = '';
+}
+
+// 渲染植物详情页的光照环境区块
+function renderLightEnvSection(plant) {
+  var el = document.getElementById('light-env-section');
+  if (!el) return;
+  var env = plant.lightEnv;
+  if (!env) { el.innerHTML = ''; return; }
+
+  // 获取参考库DLI数据
+  var ref = REF_DATA.find(function(r){ return r.name === (plant.refName || plant.name); });
+  var dliMin = ref ? ref.dliMin : null;
+  var dliRec = ref ? ref.dliRec : null;
+
+  // 计算当前DLI（户外方案用当前月份重算）
+  var currentDLI = 0;
+  var sourceLabel = '';
+  var paramsHTML  = '';
+
+  if (env.type === 'outdoor') {
+    // 用当前月份重算
+    var nowMonth = new Date().getMonth() + 1;
+    var md = NYC_MONTHS[nowMonth];
+    if (md) {
+      var coeff = window.skyMode === 'clear' ? 1.0 : 0.75;
+      var noonPPFD = md.noonPPFD * coeff;
+      var t1 = env.startH ? timeStrToH(env.startH) : md.rise;
+      var t2 = env.endH   ? timeStrToH(env.endH)   : md.set;
+      var directDLI  = sinIntegrateDLI(noonPPFD, md.rise, md.set, t1, t2, null);
+      var diffuseDLI = noonPPFD * 0.05 * (env.diffuseHrs||0) * 3.6 / 1000;
+      currentDLI = Math.round((directDLI + diffuseDLI) * 100) / 100;
+    }
+    sourceLabel = '☀️ 户外自然光';
+    var savedMonth = env.month;
+    var monthNames = ['','1月','2月','3月','4月','5月','6月','7月','8月','9月','10月','11月','12月'];
+    paramsHTML = '记录时月份 ' + (monthNames[savedMonth]||'') + ' · ' +
+      (env.startH||'') + '–' + (env.endH||'') + ' · 散射 ' + (env.diffuseHrs||0) + 'h';
+  } else {
+    currentDLI = env.totalDLI || 0;
+    sourceLabel = '💡 补光灯';
+    var ptStr = (env.points||[]).map(function(p){
+      return p.name + ' ' + p.lux + 'lux×' + p.hrs + 'h';
+    }).join('  ');
+    paramsHTML = ptStr;
+  }
+
+  // 状态判断
+  var statusHTML = '';
+  if (dliMin !== null && dliRec !== null) {
+    if (currentDLI >= dliRec)      statusHTML = '<span style="color:var(--green)">🟢 光照充足</span>';
+    else if (currentDLI >= dliMin) statusHTML = '<span style="color:var(--yellow)">🟡 勉强够用</span>';
+    else                           statusHTML = '<span style="color:var(--red)">🔴 光照不足</span>';
+  }
+
+  // 更新时间
+  var updatedAt = '';
+  if (env.savedAt) {
+    var d = Math.floor(daysSince(env.savedAt));
+    updatedAt = d === 0 ? '今天保存' : d + '天前保存';
+  }
+
+  var pct = dliRec ? Math.round(currentDLI / dliRec * 100) : null;
+
+  el.innerHTML =
+    '<div style="margin:12px 16px 0;background:var(--bg2);border:1px solid var(--border);border-radius:14px;padding:14px">' +
+      '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">' +
+        '<div style="font-size:12px;font-weight:600;color:var(--text2)">' + sourceLabel + ' 光照环境</div>' +
+        '<div style="font-size:10px;color:var(--text3);font-family:\'DM Mono\',monospace">' + updatedAt + '</div>' +
+      '</div>' +
+      '<div style="display:grid;grid-template-columns:1fr 1fr' + (dliRec ? ' 1fr' : '') + ';gap:8px;margin-bottom:8px">' +
+        '<div class="ref-data-cell"><div class="ref-data-label">实测 DLI</div>' +
+          '<div class="ref-data-val" style="font-size:14px">' + currentDLI + '</div>' +
+          '<div style="font-size:9px;color:var(--text3)">mol/m²/day</div></div>' +
+        (dliMin ? '<div class="ref-data-cell"><div class="ref-data-label">最低需求</div>' +
+          '<div class="ref-data-val" style="font-size:14px;color:var(--text2)">' + dliMin + '</div>' +
+          '<div style="font-size:9px;color:var(--text3)">mol/m²/day</div></div>' : '') +
+        (dliRec ? '<div class="ref-data-cell"><div class="ref-data-label">推荐 DLI</div>' +
+          '<div class="ref-data-val amber" style="font-size:14px">' + dliRec + '</div>' +
+          '<div style="font-size:9px;color:var(--text3)">mol/m²/day</div></div>' : '') +
+      '</div>' +
+      (statusHTML ? '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">' +
+        statusHTML +
+        (pct ? '<span style="font-size:11px;color:var(--text3);font-family:\'DM Mono\',monospace">推荐量的 ' + pct + '%</span>' : '') +
+        '</div>' : '') +
+      '<div style="font-size:10px;color:var(--text3);font-family:\'DM Mono\',monospace;line-height:1.6">' + paramsHTML + '</div>' +
+      (env.type === 'outdoor' ? '<div style="font-size:9px;color:var(--accent2);margin-top:4px">* 已自动按当前月份重新计算</div>' : '') +
+    '</div>';
 }
 
 // ══════════════════════════════════════════
