@@ -957,13 +957,6 @@ html, body {
         DLI = PPFD × 小时 × 3.6 ÷ 1000<br>
         <span style="color:var(--accent2)">DLI 单位：mol/m²/day</span>
       </div>
-      <!-- 补光灯 保存到植物 -->
-      <div style="margin-top:10px;display:flex;align-items:center;gap:8px">
-        <select id="grow-save-plant" class="form-input form-select" style="flex:1;font-size:12px">
-          <option value="">📌 保存到植物…</option>
-        </select>
-        <button class="btn btn-sm" onclick="saveLightEnvGrow()" style="white-space:nowrap">保存</button>
-      </div>
     </div>
   </div>
 
@@ -2444,8 +2437,16 @@ function addCalcRow(name = '') {
         <div class="calc-field-label">DLI</div>
         <div class="calc-result calc-dli" id="dli-${id}">—</div>
       </div>
+    </div>
+    <div style="padding:0 16px 12px;display:flex;gap:8px;align-items:center">
+      <select id="grow-save-plant-${id}" class="form-input form-select" style="flex:1;font-size:12px">
+        <option value="">📌 保存到植物…</option>
+      </select>
+      <button class="btn btn-sm" onclick="saveLightEnvGrow(${id})" style="white-space:nowrap">保存</button>
     </div>`;
   container.appendChild(div);
+  // 填充植物列表
+  populateGrowRowSelect(id);
 }
 
 function removeCalcRow(id) {
@@ -3680,21 +3681,36 @@ function deleteNote(id) {
 //  LIGHT ENVIRONMENT
 // ══════════════════════════════════════════
 
-// 填充「保存到植物」下拉列表
+// 填充单行补光灯的植物下拉
+function populateGrowRowSelect(rowId) {
+  var sel = document.getElementById('grow-save-plant-' + rowId);
+  if (!sel) return;
+  while (sel.options.length > 1) sel.remove(1);
+  db.plants.forEach(function(p) {
+    var opt = document.createElement('option');
+    opt.value = p.id;
+    opt.textContent = p.name;
+    sel.appendChild(opt);
+  });
+}
+
+// 填充「保存到植物」下拉列表（户外 + 所有补光灯行）
 function populateSavePlantSelects() {
-  var ids = ['od-save-plant', 'grow-save-plant'];
-  ids.forEach(function(id) {
-    var sel = document.getElementById(id);
-    if (!sel) return;
-    // 保留第一个 placeholder option
-    while (sel.options.length > 1) sel.remove(1);
+  // 户外
+  var odSel = document.getElementById('od-save-plant');
+  if (odSel) {
+    while (odSel.options.length > 1) odSel.remove(1);
     db.plants.forEach(function(p) {
       var opt = document.createElement('option');
       opt.value = p.id;
       opt.textContent = p.name;
-      sel.appendChild(opt);
+      odSel.appendChild(opt);
     });
-  });
+  }
+  // 补光灯各行
+  for (var i = 1; i <= calcRowCount; i++) {
+    populateGrowRowSelect(i);
+  }
 }
 
 // 保存户外自然光参数到植物
@@ -3707,9 +3723,9 @@ function saveLightEnvOutdoor() {
   var month      = parseInt(document.getElementById('od-month').value);
   var startStr   = document.getElementById('od-start').value;
   var endStr     = document.getElementById('od-end').value;
-  var diffuseHrs = parseFloat(document.getElementById('od-diffuse').value) || 0;
-  var skyMode    = window.skyMode || 'typical';
+  var diffuseHrs = parseFloat(document.getElementById('od-diffuse-hrs').value) || 0;
   var totalDLI   = parseFloat(document.getElementById('od-total-dli').textContent) || 0;
+  if (!totalDLI) { showToast('请先完成计算'); return; }
 
   plant.lightEnv = {
     type:       'outdoor',
@@ -3718,48 +3734,46 @@ function saveLightEnvOutdoor() {
     endH:       endStr,
     diffuseHrs: diffuseHrs,
     skyMode:    skyMode,
+    totalDLI:   totalDLI,
     savedAt:    new Date().toISOString(),
   };
   saveDB();
-  showToast('✓ 已保存光照环境到「' + plant.name + '」');
+  showToast('✓ 已保存到「' + plant.name + '」');
   sel.value = '';
 }
 
-// 保存补光灯参数到植物
-function saveLightEnvGrow() {
-  var sel = document.getElementById('grow-save-plant');
+// 保存单行补光灯参数到植物（rowId = 该行编号）
+function saveLightEnvGrow(rowId) {
+  var sel = document.getElementById('grow-save-plant-' + rowId);
   if (!sel || !sel.value) { showToast('请先选择植物'); return; }
   var plant = db.plants.find(function(p){ return p.id === sel.value; });
   if (!plant) return;
 
-  // 从补光灯各测量点汇总
-  var rows = document.querySelectorAll('.calc-row');
-  var points = [];
-  var totalDLI = 0;
-  rows.forEach(function(row) {
-    var luxEl  = row.querySelector('.lux-input');
-    var hrsEl  = row.querySelector('.hrs-input');
-    var nameEl = row.querySelector('.name-input');
-    var dliEl  = row.querySelector('.dli-val');
-    if (!luxEl || !hrsEl) return;
-    var lux  = parseFloat(luxEl.value) || 0;
-    var hrs  = parseFloat(hrsEl.value) || 0;
-    var coeff = parseFloat(document.getElementById('coeff-input').value) || 0.0185;
-    var ppfd = lux * coeff;
-    var dli  = ppfd * hrs * 3.6 / 1000;
-    totalDLI += dli;
-    points.push({ name: nameEl ? nameEl.value : '', lux, hrs, ppfd: Math.round(ppfd), dli: Math.round(dli*100)/100 });
-  });
+  var lux  = parseFloat(document.getElementById('lux-' + rowId).value)  || 0;
+  var hrs  = parseFloat(document.getElementById('hrs-' + rowId).value)  || 0;
+  var coeff = parseFloat(document.getElementById('coeff-input').value)  || 0.0185;
+  var ppfd = Math.round(lux * coeff);
+  var dli  = Math.round(ppfd * hrs * 3.6 / 1000 * 100) / 100;
+
+  if (!lux || !hrs) { showToast('请先填写 LUX 和小时数'); return; }
+
+  // 获取名称（calc-section-header 里的 input）
+  var rowEl   = document.getElementById('calc-row-' + rowId);
+  var nameEl  = rowEl ? rowEl.querySelector('input[placeholder]') : null;
+  var rowName = nameEl ? nameEl.value : '';
 
   plant.lightEnv = {
     type:     'grow',
-    coeff:    parseFloat(document.getElementById('coeff-input').value) || 0.0185,
-    points:   points,
-    totalDLI: Math.round(totalDLI * 100) / 100,
+    rowName:  rowName,
+    coeff:    coeff,
+    lux:      lux,
+    hrs:      hrs,
+    ppfd:     ppfd,
+    totalDLI: dli,
     savedAt:  new Date().toISOString(),
   };
   saveDB();
-  showToast('✓ 已保存光照环境到「' + plant.name + '」');
+  showToast('✓ 已保存到「' + plant.name + '」');
   sel.value = '';
 }
 
@@ -3781,30 +3795,27 @@ function renderLightEnvSection(plant) {
   var paramsHTML  = '';
 
   if (env.type === 'outdoor') {
-    // 用当前月份重算
     var nowMonth = new Date().getMonth() + 1;
     var md = NYC_MONTHS[nowMonth];
     if (md) {
-      var coeff = window.skyMode === 'clear' ? 1.0 : 0.75;
-      var noonPPFD = md.noonPPFD * coeff;
-      var t1 = env.startH ? timeStrToH(env.startH) : md.rise;
-      var t2 = env.endH   ? timeStrToH(env.endH)   : md.set;
-      var directDLI  = sinIntegrateDLI(noonPPFD, md.rise, md.set, t1, t2, null);
-      var diffuseDLI = noonPPFD * 0.05 * (env.diffuseHrs||0) * 3.6 / 1000;
-      currentDLI = Math.round((directDLI + diffuseDLI) * 100) / 100;
+      var sc    = (env.skyMode === 'clear') ? 1.0 : 0.75;
+      var noonP = md.noonPPFD * sc;
+      var t1    = env.startH ? timeStrToH(env.startH) : md.rise;
+      var t2    = env.endH   ? timeStrToH(env.endH)   : md.set;
+      var dDLI  = sinIntegrateDLI(noonP, md.rise, md.set, t1, t2, null);
+      var difDLI = noonP * 0.05 * (env.diffuseHrs||0) * 3.6 / 1000;
+      currentDLI = Math.round((dDLI + difDLI) * 100) / 100;
     }
     sourceLabel = '☀️ 户外自然光';
-    var savedMonth = env.month;
     var monthNames = ['','1月','2月','3月','4月','5月','6月','7月','8月','9月','10月','11月','12月'];
-    paramsHTML = '记录时月份 ' + (monthNames[savedMonth]||'') + ' · ' +
-      (env.startH||'') + '–' + (env.endH||'') + ' · 散射 ' + (env.diffuseHrs||0) + 'h';
+    paramsHTML = '记录时月份 ' + (monthNames[env.month]||'') + ' · ' +
+      (env.startH||'') + '–' + (env.endH||'') +
+      (env.diffuseHrs ? ' · 散射 ' + env.diffuseHrs + 'h' : '');
   } else {
     currentDLI = env.totalDLI || 0;
     sourceLabel = '💡 补光灯';
-    var ptStr = (env.points||[]).map(function(p){
-      return p.name + ' ' + p.lux + 'lux×' + p.hrs + 'h';
-    }).join('  ');
-    paramsHTML = ptStr;
+    paramsHTML  = (env.rowName ? env.rowName + ' · ' : '') +
+      (env.lux||0) + ' lux × ' + (env.hrs||0) + 'h · PPFD ' + (env.ppfd||0) + ' μmol';
   }
 
   // 状态判断
