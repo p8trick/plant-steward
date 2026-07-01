@@ -1167,7 +1167,7 @@ html, body {
     <div class="sheet-header">
       <div>
         <div class="sheet-title">⚙️ 设置</div>
-        <div style="font-size:10px;color:var(--text3);font-family:'DM Mono',monospace;margin-top:2px">PlantSteward v2.0.0</div>
+        <div style="font-size:10px;color:var(--text3);font-family:'DM Mono',monospace;margin-top:2px">PlantSteward v2.1.0</div>
       </div>
       <button class="btn btn-sm" onclick="closeSheet('sheet-settings')">关闭</button>
     </div>
@@ -1186,11 +1186,16 @@ html, body {
 
       <div style="height:1px;background:var(--border);margin-bottom:20px"></div>
 
-      <div style="font-size:13px;font-weight:600;color:var(--text);margin-bottom:12px">💾 数据备份</div>
+      <div style="font-size:13px;font-weight:600;color:var(--text);margin-bottom:8px">💾 数据备份</div>
+      <div id="backup-status" style="margin-bottom:12px;font-size:11px;color:var(--text3);font-family:'DM Mono',monospace"></div>
       <div style="display:flex;flex-direction:column;gap:10px">
+        <button class="btn" style="width:100%;padding:13px;text-align:left" onclick="shareBackup()">
+          📱 分享备份
+          <div style="font-size:11px;color:var(--text3);margin-top:3px">直接分享到文件、信息、邮件等</div>
+        </button>
         <button class="btn" style="width:100%;padding:13px;text-align:left" onclick="exportData();closeSheet('sheet-settings')">
-          📤 导出数据（JSON）
-          <div style="font-size:11px;color:var(--text3);margin-top:3px">含植物、记录、AI查询缓存</div>
+          📤 下载数据（JSON）
+          <div style="font-size:11px;color:var(--text3);margin-top:3px">含植物、记录、笔记等全部数据</div>
         </button>
         <button class="btn" style="width:100%;padding:13px;text-align:left" onclick="triggerImport()">
           📥 导入数据（JSON）
@@ -4051,8 +4056,70 @@ function exportData() {
   a.download = '植物管家_' + new Date().toISOString().slice(0,10) + '.json';
   a.click();
   URL.revokeObjectURL(url);
+  recordBackupTime();
   showToast('✓ 数据已导出');
 }
+
+function recordBackupTime() {
+  localStorage.setItem('plantcare_last_backup', Date.now().toString());
+  renderBackupStatus();
+}
+
+function renderBackupStatus() {
+  var el = document.getElementById('backup-status');
+  if (!el) return;
+  var last = localStorage.getItem('plantcare_last_backup');
+  if (!last) {
+    el.innerHTML = '<span style="color:var(--accent2)">⚠️ 尚未备份过数据</span>';
+    return;
+  }
+  var days = Math.floor((Date.now() - parseInt(last)) / 86400000);
+  var label = days === 0 ? '今天已备份' : days + '天前备份';
+  if (days >= 14) {
+    el.innerHTML = '<span style="color:var(--accent2)">⚠️ ' + label + '，建议重新备份</span>';
+  } else {
+    el.innerHTML = '<span style="color:var(--green)">✓ ' + label + '</span>';
+  }
+}
+
+// 分享备份（Web Share API，失败时降级为下载）
+async function shareBackup() {
+  const json = JSON.stringify(db, null, 2);
+  const filename = '植物管家_' + new Date().toISOString().slice(0,10) + '.json';
+
+  if (navigator.share && navigator.canShare) {
+    try {
+      const file = new File([json], filename, { type: 'application/json' });
+      if (navigator.canShare({ files: [file] })) {
+        await navigator.share({
+          files: [file],
+          title: 'PlantSteward 数据备份',
+        });
+        recordBackupTime();
+        showToast('✓ 备份已分享');
+        return;
+      }
+    } catch (e) {
+      // 用户取消分享，不算失败，不降级下载
+      if (e.name === 'AbortError') return;
+    }
+  }
+  // 不支持 Web Share API 时降级为下载
+  exportData();
+}
+
+// 启动时检查备份提醒（超过30天才主动toast提示）
+function checkBackupReminder() {
+  var last = localStorage.getItem('plantcare_last_backup');
+  if (!last) return; // 从未备份过不主动打扰，设置页会有提示
+  var days = Math.floor((Date.now() - parseInt(last)) / 86400000);
+  if (days >= 30) {
+    setTimeout(function() {
+      showToast('💾 已' + days + '天未备份，建议前往设置备份数据');
+    }, 1500);
+  }
+}
+
 function triggerImport() { document.getElementById('import-input').click(); }
 function importData(e) {
   const file = e.target.files[0];
@@ -4078,6 +4145,7 @@ function importData(e) {
 function openSheet(id) {
   document.getElementById(id).classList.add('open');
   document.body.style.overflow = 'hidden';
+  if (id === 'sheet-settings') renderBackupStatus();
 }
 function closeSheet(id) {
   document.getElementById(id).classList.remove('open');
@@ -4126,6 +4194,7 @@ try {
   initSwipeBack();
   renderDateBar();
   checkSeasonChange();
+  checkBackupReminder();
   renderPlants();
   fetchWeather();
   calcOutdoorDLI();
