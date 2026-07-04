@@ -1078,18 +1078,18 @@ html, body {
       </div>
       <div class="form-group">
         <label class="form-label">施肥周期</label>
-        <select class="form-input form-select" id="add-fert-cycle">
-          <option value="7">蔬菜香草 — 每7天</option>
-          <option value="14" selected>普通观叶 — 每14天</option>
-          <option value="30">月施一次 — 每30天</option>
-          <option value="45">耐旱植物 — 每45天（生长季）</option>
-          <option value="90">极少施肥 — 每季度</option>
-          <option value="custom">自定义天数</option>
-        </select>
-      </div>
-      <div class="form-group" id="custom-cycle-group" style="display:none">
-        <label class="form-label">自定义天数</label>
-        <input class="form-input" id="add-custom-cycle" type="number" placeholder="天数" min="1">
+        <div id="fert-cycle-ref-hint" style="display:none;margin-bottom:8px;font-size:11px;color:var(--accent);font-family:'DM Mono',monospace"></div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+          <div>
+            <div style="font-size:11px;color:var(--text3);margin-bottom:4px">🌱 春夏（天）</div>
+            <input class="form-input" id="add-fert-summer" type="number" min="0" value="14" placeholder="0=停肥">
+          </div>
+          <div>
+            <div style="font-size:11px;color:var(--text3);margin-bottom:4px">❄️ 秋冬（天）</div>
+            <input class="form-input" id="add-fert-winter" type="number" min="0" value="14" placeholder="0=停肥">
+          </div>
+        </div>
+        <div style="margin-top:5px;font-size:10px;color:var(--text3)">0 = 该季节停肥；未从参考库选择时可自行填写</div>
       </div>
       <div class="form-group">
         <label class="form-label">备注（可选）</label>
@@ -1167,7 +1167,7 @@ html, body {
     <div class="sheet-header">
       <div>
         <div class="sheet-title">⚙️ 设置</div>
-        <div style="font-size:10px;color:var(--text3);font-family:'DM Mono',monospace;margin-top:2px">PlantSteward v2.1.0</div>
+        <div style="font-size:10px;color:var(--text3);font-family:'DM Mono',monospace;margin-top:2px">PlantSteward v2.2.0</div>
       </div>
       <button class="btn btn-sm" onclick="closeSheet('sheet-settings')">关闭</button>
     </div>
@@ -1553,7 +1553,13 @@ function selectRefPlant(name) {
   const days   = selectedLoc === 'outdoor'
     ? (summer ? r.woi : r.wow) : (summer ? r.wii : r.wiw);
   var fertMap = { moisture:14, normal:14, drought:45, herb:7, succulent:45 };
-  document.getElementById('add-fert-cycle').value = String(r.fertSummer || fertMap[r.waterType] || 14);
+  const fs = r.fertSummer !== undefined ? r.fertSummer : (fertMap[r.waterType] || 14);
+  const fw = r.fertWinter !== undefined ? r.fertWinter : fs;
+  document.getElementById('add-fert-summer').value = fs;
+  document.getElementById('add-fert-winter').value = fw;
+  const fertHint = document.getElementById('fert-cycle-ref-hint');
+  fertHint.style.display = 'block';
+  fertHint.textContent = '✓ 已按参考库填入：春夏 ' + fs + ' 天 / 秋冬 ' + (fw === 0 ? '停肥' : fw + ' 天');
   document.getElementById('water-type-group').style.display = 'none';
   // 显示昵称输入框，预填参考库名
   document.getElementById('nickname-group').style.display = 'block';
@@ -1577,8 +1583,9 @@ function openAddPlant() {
   document.getElementById('nickname-group').style.display    = 'none';
   document.getElementById('add-nickname').value              = '';
   document.getElementById('water-type-group').style.display  = 'block';
-  document.getElementById('add-fert-cycle').value            = '14';
-  document.getElementById('custom-cycle-group').style.display = 'none';
+  document.getElementById('fert-cycle-ref-hint').style.display = 'none';
+  document.getElementById('add-fert-summer').value            = '14';
+  document.getElementById('add-fert-winter').value            = '14';
   document.getElementById('add-note').value = '';
   selectLoc('indoor');
   renderPickList('');
@@ -1611,9 +1618,10 @@ function onNameInput() {
     wtGroup.style.display = 'none';
     // 自动填入施肥周期
     const fertMap = { moisture:14, normal:14, drought:45, herb:7, succulent:45 };
-    const fertSel = document.getElementById('add-fert-cycle');
-    const autoFert = fertMap[match.waterType] || 14;
-    fertSel.value = String(autoFert);
+    const fs = match.fertSummer !== undefined ? match.fertSummer : (fertMap[match.waterType] || 14);
+    const fw = match.fertWinter !== undefined ? match.fertWinter : fs;
+    document.getElementById('add-fert-summer').value = fs;
+    document.getElementById('add-fert-winter').value = fw;
   } else {
     matchedRefPlant = null;
     hint.style.display = 'block';
@@ -1627,8 +1635,15 @@ function selectLoc(loc) {
   selectedLoc = loc;
   document.getElementById('loc-indoor').classList.toggle('selected', loc === 'indoor');
   document.getElementById('loc-outdoor').classList.toggle('selected', loc === 'outdoor');
-  // 重新触发匹配提示以更新天数
-  if (matchedRefPlant) onNameInput();
+  // 若已从参考库选中植物，仅更新浇水天数提示，不重置其他已填内容
+  if (matchedRefPlant) {
+    const r = matchedRefPlant;
+    const summer = isSummer();
+    const days = loc === 'outdoor'
+      ? (summer ? r.woi : r.wow) : (summer ? r.wii : r.wiw);
+    const hint = document.getElementById('selected-plant-hint');
+    if (hint) hint.textContent = '✓ 已关联「' + r.name + '」· 当前季节推荐每 ' + days + ' 天浇水';
+  }
 }
 
 function savePlant() {
@@ -1645,22 +1660,18 @@ function savePlant() {
     refName = displayName; // 自定义模式无关联
   }
 
-  let cycle = parseInt(document.getElementById('add-fert-cycle').value);
-  if (isNaN(cycle)) {
-    cycle = parseInt(document.getElementById('add-custom-cycle').value);
-    if (!cycle || cycle < 1) { showToast('请输入有效天数'); return; }
-  }
+  const fsInput = document.getElementById('add-fert-summer').value;
+  const fwInput = document.getElementById('add-fert-winter').value;
+  const fertCycleSummer = fsInput === '' ? 14 : Math.max(0, parseInt(fsInput) || 0);
+  const fertCycleWinter = fwInput === '' ? 14 : Math.max(0, parseInt(fwInput) || 0);
+  const cycle = isSummer() ? fertCycleSummer : fertCycleWinter; // 兼容旧字段，取当季值
 
   let waterType  = null;
   let waterCycle = null;
-  let fertCycleSummer = cycle;
-  let fertCycleWinter = cycle;
   if (matchedRefPlant) {
     waterType  = matchedRefPlant.waterType;
     waterCycle = { ii: matchedRefPlant.wii, iw: matchedRefPlant.wiw,
                    oi: matchedRefPlant.woi, ow: matchedRefPlant.wow };
-    fertCycleSummer = matchedRefPlant.fertSummer || cycle;
-    fertCycleWinter = matchedRefPlant.fertWinter !== undefined ? matchedRefPlant.fertWinter : cycle;
   } else {
     waterType = document.getElementById('add-water-type').value;
   }
@@ -3139,12 +3150,74 @@ function checkSeasonChange() {
 
   // 季节发生变化时提示并刷新
   if (lastSeason && lastSeason !== nowSeason) {
-    // 延迟显示，等页面渲染完
     setTimeout(function() {
       showToast(si.emoji + ' 已进入' + si.label + '，浇水周期已自动更新');
-      renderPlants(); // 刷新卡片颜色和周期
+      renderPlants();
     }, 800);
+  } else {
+    // 未换季时，检查是否即将换季（施肥提前提醒）
+    checkFertSeasonReminder();
   }
+}
+
+// 施肥换季提前提醒（提前10天）
+function checkFertSeasonReminder() {
+  var REMIND_DAYS = 10;
+  var now = new Date();
+  var year = now.getFullYear();
+
+  // 两个换季日：3月1日（转春夏）、9月1日（转秋冬）
+  var toSummerDate = new Date(year, 2, 1);  // 3月1日
+  var toWinterDate = new Date(year, 8, 1);  // 9月1日
+
+  var daysToSummer = Math.round((toSummerDate - now) / 86400000);
+  var daysToWinter = Math.round((toWinterDate - now) / 86400000);
+
+  var targetType = null; // 'toWinter' | 'toSummer'
+  var daysLeft   = null;
+
+  if (daysToWinter >= 0 && daysToWinter <= REMIND_DAYS) {
+    targetType = 'toWinter'; daysLeft = daysToWinter;
+  } else if (daysToSummer >= 0 && daysToSummer <= REMIND_DAYS) {
+    targetType = 'toSummer'; daysLeft = daysToSummer;
+  }
+
+  if (!targetType) return;
+
+  // 每个窗口期只提醒一次
+  var remindKey = 'plantcare_fert_remind_' + year + '_' + targetType;
+  if (localStorage.getItem(remindKey)) return;
+
+  // 找出受影响的植物
+  var affected = db.plants.filter(function(p) {
+    var ref = REF_DATA.find(function(r){ return r.name === (p.refName || p.name); });
+    var fw  = ref ? ref.fertWinter : (p.fertCycleWinter !== undefined ? p.fertCycleWinter : null);
+    var fs  = ref ? ref.fertSummer : (p.fertCycleSummer !== undefined ? p.fertCycleSummer : null);
+    if (targetType === 'toWinter') return fw === 0; // 即将停肥
+    if (targetType === 'toSummer') return fw === 0 && fs > 0; // 即将恢复施肥
+    return false;
+  });
+
+  if (!affected.length) {
+    localStorage.setItem(remindKey, '1');
+    return;
+  }
+
+  var names = affected.slice(0, 3).map(function(p){ return p.name; }).join('、');
+  var suffix = affected.length > 3 ? ' 等' + affected.length + '盆' : '';
+
+  var msg;
+  if (targetType === 'toWinter') {
+    msg = '🍂 ' + names + suffix + ' 即将进入停肥季（' + daysLeft + '天后），记得施最后一次肥';
+  } else {
+    msg = '🌱 ' + names + suffix + ' 即将恢复施肥（' + daysLeft + '天后），可以准备肥料了';
+  }
+
+  setTimeout(function() {
+    showToast(msg);
+  }, 1200);
+
+  localStorage.setItem(remindKey, '1');
 }
 
 // 浇水推荐天数
@@ -3618,18 +3691,33 @@ function renderNoteList(plantId) {
     .filter(function(n){ return n.plantId === plantId; })
     .sort(function(a,b){ return new Date(b.date) - new Date(a.date); });
   if (!notes.length) return '<div style="color:var(--text3);font-size:13px;padding:8px 0">暂无生长笔记</div>';
-  return notes.map(function(n) {
+
+  var html = '<div style="position:relative;padding-left:6px">';
+  // 时间线竖线
+  html += '<div style="position:absolute;left:17px;top:8px;bottom:8px;width:2px;background:linear-gradient(to bottom, var(--border), transparent)"></div>';
+
+  html += notes.map(function(n, i) {
     var d = new Date(n.date);
     var dateStr = d.toLocaleDateString('zh-CN', { year:'numeric', month:'numeric', day:'numeric' });
-    return '<div style="background:var(--bg3);border:1px solid var(--border);border-radius:10px;padding:11px 14px;margin-bottom:6px">'
-      + '<div style="display:flex;align-items:center;gap:8px;margin-bottom:5px">'
-      + '<span style="font-size:18px">' + (n.tag||'🌱') + '</span>'
-      + '<div style="flex:1"><span style="font-size:11px;color:var(--text3);font-family:\'DM Mono\',monospace">' + dateStr + '</span></div>'
+    var isLast = i === notes.length - 1;
+    return '<div style="position:relative;padding-left:34px;margin-bottom:' + (isLast ? '0' : '14px') + '">'
+      // 时间线节点（emoji图标）
+      + '<div style="position:absolute;left:0;top:0;width:34px;height:34px;border-radius:50%;'
+      + 'background:var(--bg3);border:2px solid var(--border);display:flex;align-items:center;'
+      + 'justify-content:center;font-size:16px;z-index:1">' + (n.tag||'🌱') + '</div>'
+      // 内容卡片
+      + '<div style="background:var(--bg3);border:1px solid var(--border);border-radius:10px;padding:11px 14px;margin-left:8px">'
+      + '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:5px">'
+      + '<span style="font-size:11px;color:var(--text3);font-family:\'DM Mono\',monospace">' + dateStr + '</span>'
       + '<button onclick="deleteNote(\'' + n.id + '\')" style="background:none;border:none;color:var(--text3);cursor:pointer;font-size:15px;padding:2px 4px">✕</button>'
       + '</div>'
       + '<div style="font-size:13px;color:var(--text);line-height:1.65">' + n.content + '</div>'
+      + '</div>'
       + '</div>';
   }).join('');
+
+  html += '</div>';
+  return html;
 }
 
 function openNote() {
@@ -3660,11 +3748,21 @@ function saveNote() {
   if (!content) { showToast('请输入笔记内容'); return; }
   var dateVal = document.getElementById('note-date').value;
   if (!db.notes) db.notes = [];
+
+  var noteDate;
+  if (dateVal) {
+    // 手动解析年月日，构造本地时间正午，避免UTC时区转换导致日期偏移一天
+    var parts = dateVal.split('-');
+    noteDate = new Date(parseInt(parts[0]), parseInt(parts[1])-1, parseInt(parts[2]), 12, 0, 0);
+  } else {
+    noteDate = new Date();
+  }
+
   var note = {
     id:      genId(),
     plantId: currentPlantId,
     tag:     selectedNoteTag,
-    date:    dateVal ? new Date(dateVal).toISOString() : new Date().toISOString(),
+    date:    noteDate.toISOString(),
     content: content
   };
   db.notes.push(note);
@@ -3676,11 +3774,13 @@ function saveNote() {
 }
 
 function deleteNote(id) {
-  db.notes = (db.notes||[]).filter(function(n){ return n.id !== id; });
-  saveDB();
-  var el = document.getElementById('note-list');
-  if (el) el.innerHTML = renderNoteList(currentPlantId);
-  showToast('已删除笔记');
+  showConfirm('删除笔记', '确定要删除这条生长笔记吗？此操作无法撤回。', function() {
+    db.notes = (db.notes||[]).filter(function(n){ return n.id !== id; });
+    saveDB();
+    var el = document.getElementById('note-list');
+    if (el) el.innerHTML = renderNoteList(currentPlantId);
+    showToast('已删除笔记');
+  });
 }
 
 // ══════════════════════════════════════════
@@ -4185,9 +4285,6 @@ function confirmCancel() { document.getElementById('confirm-overlay').classList.
 try {
   loadDB();
   if (typeof loadTheme === 'function') loadTheme();
-  document.getElementById('add-fert-cycle').addEventListener('change', function() {
-    document.getElementById('custom-cycle-group').style.display = this.value === 'custom' ? 'block' : 'none';
-  });
   document.querySelectorAll('.overlay').forEach(function(el) {
     el.addEventListener('click', function(e) { if (e.target === el) closeSheet(el.id); });
   });
