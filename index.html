@@ -186,21 +186,28 @@ html, body {
   border-radius: 14px;
   padding: 14px 16px;
   cursor: pointer;
-  transition: background .15s;
+  transition: background .15s, border-color .15s, box-shadow .15s;
   position: relative;
   overflow: hidden;
 }
-.plant-card::before {
-  content: '';
-  position: absolute;
-  left: 0; top: 0; bottom: 0;
-  width: 4px;
-  border-radius: 4px 0 0 4px;
-}
-.plant-card.urgent::before { background: var(--red); }
-.plant-card.warning::before { background: var(--yellow); }
-.plant-card.ok::before { background: var(--green); }
 .plant-card:active { background: var(--bg3); }
+
+/* 紧急：红色整圈粗边框 + 背景晕染 + 发光 */
+.plant-card.urgent {
+  border: 2.5px solid var(--red);
+  background: linear-gradient(135deg, rgba(224,112,96,.16), var(--bg2) 55%);
+  box-shadow: 0 0 0 2px rgba(224,112,96,.25), 0 4px 16px rgba(224,112,96,.25);
+}
+/* 警告：黄色整圈粗边框 + 背景晕染 */
+.plant-card.warning {
+  border: 2.5px solid var(--yellow);
+  background: linear-gradient(135deg, rgba(212,168,83,.14), var(--bg2) 55%);
+  box-shadow: 0 0 0 2px rgba(212,168,83,.2), 0 4px 14px rgba(212,168,83,.18);
+}
+/* 正常：默认样式 */
+.plant-card.ok {
+  border-color: var(--border);
+}
 
 .card-top { display: flex; align-items: flex-start; justify-content: space-between; margin-bottom: 10px; }
 .card-name { font-size: 16px; font-weight: 600; color: var(--text); }
@@ -1167,7 +1174,7 @@ html, body {
     <div class="sheet-header">
       <div>
         <div class="sheet-title">⚙️ 设置</div>
-        <div style="font-size:10px;color:var(--text3);font-family:'DM Mono',monospace;margin-top:2px">PlantSteward v2.2.0</div>
+        <div style="font-size:10px;color:var(--text3);font-family:'DM Mono',monospace;margin-top:2px">PlantSteward v2.3.0</div>
       </div>
       <button class="btn btn-sm" onclick="closeSheet('sheet-settings')">关闭</button>
     </div>
@@ -3557,6 +3564,20 @@ function renderStats() {
     return { plant:p, avgGap:avgGap, recGap:getWaterCycle(p) };
   });
 
+  var fertIntervalData = plants.map(function(p){
+    var fLogs = db.logs.filter(function(l){ return l.plantId===p.id && l.type==='fert'; })
+      .sort(function(a,b){ return new Date(a.date)-new Date(b.date); });
+    var avgGap = null;
+    if (fLogs.length>=2) {
+      var gaps=[];
+      for(var i=1;i<fLogs.length;i++)
+        gaps.push((new Date(fLogs[i].date)-new Date(fLogs[i-1].date))/86400000);
+      avgGap = Math.round(gaps.reduce(function(a,b){return a+b;},0)/gaps.length*10)/10;
+    }
+    var recGap = getFertCycle(p);
+    return { plant:p, avgGap:avgGap, recGap:recGap };
+  });
+
   // ── 近期活动
   var maxCardBorder = maxUnwatered.plant && maxUnwatered.days>14 ? 'rgba(224,112,96,.4)' : 'var(--border)';
   var maxCardColor  = maxUnwatered.plant && maxUnwatered.days>14 ? 'var(--red)' : 'var(--text)';
@@ -3640,6 +3661,43 @@ function renderStats() {
     html += '<div style="font-size:9px;color:var(--text3);width:24px">推荐</div>';
     html += '<div style="flex:1;height:5px;background:var(--bg3);border-radius:3px">';
     html += '<div style="height:5px;border-radius:3px;background:rgba(168,200,120,0.5);width:50%"></div></div></div></div>';
+  });
+  html += '</div></div>';
+
+  // ── 施肥间隔对比
+  html += '<div style="margin:16px 16px 0">';
+  html += '<div class="stats-section-title">🧪 实际 vs 推荐施肥间隔</div>';
+  html += '<div style="display:flex;flex-direction:column;gap:5px;margin-top:8px">';
+  fertIntervalData.forEach(function(item){
+    var p=item.plant, avgGap=item.avgGap, recGap=item.recGap;
+    var isStopSeason = recGap === 0;
+    var hasData = avgGap !== null;
+
+    html += '<div style="background:var(--bg2);border:1px solid var(--border);border-radius:10px;padding:10px 14px">';
+    html += '<div style="display:flex;justify-content:space-between;margin-bottom:5px">';
+    html += '<div style="font-size:13px;font-weight:600;color:var(--text)">'+p.name+'</div>';
+
+    if (isStopSeason) {
+      html += '<div style="font-size:11px;font-family:\'DM Mono\',monospace;color:var(--text3)">🧪 当季建议停肥</div></div>';
+      html += '</div>';
+      return;
+    }
+
+    var diff    = hasData ? avgGap - recGap : null;
+    var diffCol = diff===null ? 'var(--text3)' : diff>recGap*0.2 ? 'var(--red)' : diff < -recGap*0.2 ? '#5bb9e1' : 'var(--green)';
+    var barW    = hasData ? Math.min(100, Math.round(avgGap/recGap*50)) : 0;
+    var dataLabel = hasData
+      ? ('<span style="color:'+diffCol+'">'+avgGap+'天</span> <span style="color:var(--text3)">/ 推荐'+recGap+'天</span>')
+      : '<span style="color:var(--text3)">记录不足</span>';
+    html += '<div style="font-size:11px;font-family:\'DM Mono\',monospace">'+dataLabel+'</div></div>';
+    html += '<div style="display:flex;gap:3px;align-items:center">';
+    html += '<div style="font-size:9px;color:var(--text3);width:24px">实际</div>';
+    html += '<div style="flex:1;height:5px;background:var(--bg3);border-radius:3px">';
+    html += '<div style="height:5px;border-radius:3px;background:'+diffCol+';width:'+barW+'%"></div></div></div>';
+    html += '<div style="display:flex;gap:3px;align-items:center;margin-top:3px">';
+    html += '<div style="font-size:9px;color:var(--text3);width:24px">推荐</div>';
+    html += '<div style="flex:1;height:5px;background:var(--bg3);border-radius:3px">';
+    html += '<div style="height:5px;border-radius:3px;background:rgba(212,168,83,0.5);width:50%"></div></div></div></div>';
   });
   html += '</div></div>';
 
