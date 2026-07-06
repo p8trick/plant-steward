@@ -184,30 +184,27 @@ html, body {
   background: var(--bg2);
   border: 1px solid var(--border);
   border-radius: 14px;
-  padding: 14px 16px;
+  padding: 14px 16px 14px 28px;
   cursor: pointer;
-  transition: background .15s, border-color .15s, box-shadow .15s;
+  transition: background .15s;
   position: relative;
   overflow: hidden;
 }
 .plant-card:active { background: var(--bg3); }
 
-/* 紧急：红色整圈粗边框 + 背景晕染 + 发光 */
-.plant-card.urgent {
-  border: 2.5px solid var(--red);
-  background: linear-gradient(135deg, rgba(224,112,96,.16), var(--bg2) 55%);
-  box-shadow: 0 0 0 2px rgba(224,112,96,.25), 0 4px 16px rgba(224,112,96,.25);
+/* 左侧色条 */
+.plant-card::before {
+  content: '';
+  position: absolute;
+  left: 0; top: 0; bottom: 0;
+  width: 8px;
+  border-radius: 14px 0 0 14px;
 }
-/* 警告：黄色整圈粗边框 + 背景晕染 */
-.plant-card.warning {
-  border: 2.5px solid var(--yellow);
-  background: linear-gradient(135deg, rgba(212,168,83,.14), var(--bg2) 55%);
-  box-shadow: 0 0 0 2px rgba(212,168,83,.2), 0 4px 14px rgba(212,168,83,.18);
-}
-/* 正常：默认样式 */
-.plant-card.ok {
-  border-color: var(--border);
-}
+.plant-card.urgent::before { background: var(--red); }
+.plant-card.warning::before { background: var(--yellow); }
+.plant-card.ok::before { background: var(--green); }
+
+
 
 .card-top { display: flex; align-items: flex-start; justify-content: space-between; margin-bottom: 10px; }
 .card-name { font-size: 16px; font-weight: 600; color: var(--text); }
