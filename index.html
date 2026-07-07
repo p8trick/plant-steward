@@ -1171,11 +1171,17 @@ html, body {
     <div class="sheet-header">
       <div>
         <div class="sheet-title">⚙️ 设置</div>
-        <div style="font-size:10px;color:var(--text3);font-family:'DM Mono',monospace;margin-top:2px">PlantSteward v2.3.0</div>
+        <div style="font-size:10px;color:var(--text3);font-family:'DM Mono',monospace;margin-top:2px">PlantSteward v2.4.0</div>
       </div>
       <button class="btn btn-sm" onclick="closeSheet('sheet-settings')">关闭</button>
     </div>
     <div class="sheet-body">
+
+      <!-- 使用帮助 -->
+      <button class="btn" style="width:100%;padding:13px;text-align:left;margin-bottom:20px" onclick="openSheet('sheet-help')">
+        ❓ 使用帮助
+        <div style="font-size:11px;color:var(--text3);margin-top:3px">快速了解各功能怎么用</div>
+      </button>
 
       <!-- 主题切换 -->
       <div style="margin-bottom:20px">
@@ -1206,6 +1212,78 @@ html, body {
           <div style="font-size:11px;color:var(--text3);margin-top:3px">覆盖当前所有数据</div>
         </button>
       </div>
+    </div>
+  </div>
+</div>
+
+<!-- ══ SHEET: 使用帮助 ══ -->
+<div class="overlay" id="sheet-help">
+  <div class="sheet">
+    <div class="sheet-handle"></div>
+    <div class="sheet-header">
+      <div class="sheet-title">❓ 使用帮助</div>
+      <button class="btn btn-sm" onclick="closeSheet('sheet-help')">关闭</button>
+    </div>
+    <div class="sheet-body" style="line-height:1.7">
+
+      <div style="background:rgba(168,200,120,.08);border:1px solid rgba(168,200,120,.3);border-radius:10px;padding:12px 14px;margin-bottom:20px;font-size:12px;color:var(--accent)">
+        💡 浇水和施肥是<b>两个独立记录</b>。用水溶肥浇灌时，记得同时点「刚浇水」和「刚施肥」两个按钮，否则浇水状态仍会显示超期。
+      </div>
+
+      <!-- 我的植物 -->
+      <div style="margin-bottom:22px">
+        <div style="font-size:14px;font-weight:600;color:var(--text);margin-bottom:10px">🌿 我的植物</div>
+        <div style="font-size:12px;color:var(--text2)">
+          <b>➕ 添加植物</b>：右下角绿色按钮 → 从参考库选择植物 → 自动带入推荐浇水/施肥周期，也可填个性化昵称。<br><br>
+          <b>🎨 卡片颜色</b>：左侧色条 🔴红色=急需照顾 🟡黄色=快到时间了 🟢绿色=状态正常。<br><br>
+          <b>💧🧪 快速记录</b>：进入植物详情页点「刚浇水」「刚施肥」，今天已操作会变暗显示"已浇水/已施肥"，重复点击会弹窗确认。<br><br>
+          <b>💧 批量浇水</b>：主页顶部按钮，一次性给多盆植物记录浇水，耐旱型植物默认不勾选。<br><br>
+          <b>✏️ 改名</b>：详情页可修改昵称、切换室内外（自动更新浇水周期）、调整春夏/秋冬施肥天数。<br><br>
+          <b>📝 生长笔记</b>：详情页可添加带日期和标签的成长记录，支持回溯补记过去的日期。
+        </div>
+      </div>
+
+      <!-- 统计 -->
+      <div style="margin-bottom:22px">
+        <div style="font-size:14px;font-weight:600;color:var(--text);margin-bottom:10px">📊 统计</div>
+        <div style="font-size:12px;color:var(--text2)">
+          <b>❤️ 健康评分</b>：满分100，看浇水规律性(40)+及时性(30)+施肥规律(30)，需要至少2次记录才能计算。<br><br>
+          <b>💧🧪 间隔对比</b>：实际平均间隔 vs 参考推荐间隔，条形图越接近说明照顾越规律。停肥季节的植物会显示"当季建议停肥"。
+        </div>
+      </div>
+
+      <!-- 光照计算 -->
+      <div style="margin-bottom:22px">
+        <div style="font-size:14px;font-weight:600;color:var(--text);margin-bottom:10px">☀️ 光照计算</div>
+        <div style="font-size:12px;color:var(--text2)">
+          <b>📏 怎么测LUX</b>：推荐用手机照度计App（如"Light Meter"），放在植物叶片位置测量。<br><br>
+          <b>💡 补光灯</b>：填入LUX和每天开灯小时数，自动算出PPFD和DLI，可选择该测量点对应的植物一起保存。<br><br>
+          <b>🌤 户外自然光</b>：选择月份和日照时段，估算全天DLI，"典型晴天"更保守、"极端晴朗"是理论上限。<br><br>
+          <b>🌿 参考光饱和点</b>：下拉选择植物后，超过该植物光饱和点的部分不计入"有效DLI"——避免误以为光照过剩=更健康。<br><br>
+          <b>📌 保存到植物</b>：计算完成后选择植物即可保存，详情页会显示"光照环境"区块，户外方案会自动按当前月份重新计算。
+        </div>
+      </div>
+
+      <!-- 参考数据库 -->
+      <div style="margin-bottom:22px">
+        <div style="font-size:14px;font-weight:600;color:var(--text);margin-bottom:10px">📖 参考数据库</div>
+        <div style="font-size:12px;color:var(--text2)">
+          <b>~ 估算数据</b>：带这个标记的植物，数据来自同科属推算而非直接文献，仅供参考。<br><br>
+          <b>🌡 温度条</b>：蓝=耐寒区，绿=适宜区，橙红=耐热区，数值同时显示华氏和摄氏度。<br><br>
+          <b>💧 浇水频率</b>：自动按当前季节（春夏/秋冬）显示室内室外的推荐天数。
+        </div>
+      </div>
+
+      <!-- 数据备份 -->
+      <div style="margin-bottom:4px">
+        <div style="font-size:14px;font-weight:600;color:var(--text);margin-bottom:10px">💾 数据备份</div>
+        <div style="font-size:12px;color:var(--text2)">
+          <b>📱 分享备份</b>：直接调出系统分享面板，一步存到"文件"App或iCloud Drive，比下载更省事。<br><br>
+          <b>📤 下载数据</b>：传统下载方式，作为分享不可用时的备用方案。<br><br>
+          建议每月至少备份一次，超过14天未备份设置页会有提醒。
+        </div>
+      </div>
+
     </div>
   </div>
 </div>
