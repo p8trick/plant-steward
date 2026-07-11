@@ -1171,7 +1171,7 @@ html, body {
     <div class="sheet-header">
       <div>
         <div class="sheet-title">⚙️ 设置</div>
-        <div style="font-size:10px;color:var(--text3);font-family:'DM Mono',monospace;margin-top:2px">PlantSteward v2.4.1</div>
+        <div style="font-size:10px;color:var(--text3);font-family:'DM Mono',monospace;margin-top:2px">PlantSteward v2.4.2</div>
       </div>
       <button class="btn btn-sm" onclick="closeSheet('sheet-settings')">关闭</button>
     </div>
@@ -4433,6 +4433,22 @@ try {
   addCalcRow('发财树·近距离');
   addCalcRow('发财树·远距离');
   showPage('plants');
+
+  // 从后台切回前台时，刷新时间显示（不重新拉取网络数据，只重新计算相对时间）
+  document.addEventListener('visibilitychange', function() {
+    if (document.visibilityState !== 'visible') return;
+    renderDateBar();
+    var activePage = document.querySelector('.page.active');
+    if (!activePage) return;
+    var id = activePage.id;
+    if (id === 'page-plants') {
+      renderPlants();
+    } else if (id === 'page-detail' && currentPlantId) {
+      renderDetail();
+    } else if (id === 'page-stats') {
+      renderStats();
+    }
+  });
 } catch(e) {
   document.body.innerHTML = '<div style="padding:30px;color:#e07060;font-family:monospace;font-size:13px;background:#1a2118;min-height:100vh">'
     + '<div style="font-size:16px;margin-bottom:16px">⚠️ 启动错误</div>'
