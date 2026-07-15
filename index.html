@@ -697,6 +697,10 @@ html, body {
   border-radius: 10px;
   padding: 10px 12px;
   text-align: center;
+  transition: background .15s;
+}
+.stats-card[onclick]:active {
+  background: var(--bg3);
 }
 .stats-card-val {
   font-size: 20px;
@@ -3751,7 +3755,7 @@ function renderStats() {
   var maxCardColor  = maxUnwatered.plant && maxUnwatered.days>14 ? 'var(--red)' : 'var(--text)';
   var maxCardVal    = maxUnwatered.plant ? (maxUnwatered.days+'天') : '—';
   var maxCardName   = maxUnwatered.plant ? ('<div style="font-size:10px;color:var(--text3);margin-top:2px">'+maxUnwatered.plant.name+'</div>') : '';
-  var maxCardClick  = maxUnwatered.plant ? ' onclick="openDetail(\''+maxUnwatered.plant.id+'\')" style="cursor:pointer;border-color:'+maxCardBorder+'"' : ' style="border-color:'+maxCardBorder+'"';
+  var maxCardClick  = maxUnwatered.plant ? ' onclick="openDetail(\''+maxUnwatered.plant.id+'\')" style="border-color:'+maxCardBorder+'"' : ' style="border-color:'+maxCardBorder+'"';
 
   var html = '';
   html += '<div style="margin:12px 16px 0">';
