@@ -1188,7 +1188,7 @@ html, body {
     <div class="sheet-header">
       <div>
         <div class="sheet-title">⚙️ 设置</div>
-        <div style="font-size:10px;color:var(--text3);font-family:'DM Mono',monospace;margin-top:2px">PlantSteward v2.5.1</div>
+        <div style="font-size:10px;color:var(--text3);font-family:'DM Mono',monospace;margin-top:2px">PlantSteward v2.6.0</div>
       </div>
       <button class="btn btn-sm" onclick="closeSheet('sheet-settings')">关闭</button>
     </div>
@@ -3690,6 +3690,58 @@ function drawFertIntervalChart(plant, logs) {
 }
 
 // ── 统计页渲染
+// ── 单进度条：实际间隔相对推荐间隔的百分比，100%处有标记点
+function intervalBarHTML(p, avgGap, recGap, isFert) {
+  var icon = isFert ? '🧪' : '💧';
+
+  // 停肥季（仅施肥场景）
+  if (isFert && recGap === 0) {
+    return '<div style="background:var(--bg2);border:1px solid var(--border);border-radius:10px;padding:10px 14px">' +
+      '<div style="display:flex;justify-content:space-between;align-items:center">' +
+      '<div style="font-size:13px;font-weight:600;color:var(--text)">'+p.name+'</div>' +
+      '<div style="font-size:11px;font-family:\'DM Mono\',monospace;color:var(--text3)">'+icon+' 当季建议停肥</div>' +
+      '</div></div>';
+  }
+
+  var hasData = avgGap !== null;
+  if (!hasData) {
+    return '<div style="background:var(--bg2);border:1px solid var(--border);border-radius:10px;padding:10px 14px">' +
+      '<div style="display:flex;justify-content:space-between;align-items:center">' +
+      '<div style="font-size:13px;font-weight:600;color:var(--text)">'+p.name+'</div>' +
+      '<div style="font-size:11px;font-family:\'DM Mono\',monospace;color:var(--text3)">记录不足</div>' +
+      '</div></div>';
+  }
+
+  var pct     = Math.round(avgGap / recGap * 100);
+  var barPct  = Math.min(150, pct); // 条形最多显示到150%，避免极端值把条撑爆
+  var diff    = avgGap - recGap;
+  var diffCol = diff > recGap*0.2 ? 'var(--red)' : diff < -recGap*0.2 ? '#5bb9e1' : 'var(--green)';
+  var pctLabel = (pct >= 100 ? '+' : '') + (pct - 100) + '%';
+  var pctLabelText = pct === 100 ? '刚好' : (pct > 100 ? '偏慢' + pctLabel : '偏快' + Math.abs(pct-100) + '%');
+
+  // 100% 标记点位置（相对于条形总宽度150%）
+  var markerLeft = Math.round(100 / 150 * 100);
+
+  var html = '<div style="background:var(--bg2);border:1px solid var(--border);border-radius:10px;padding:10px 14px">';
+  html += '<div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:7px">';
+  html += '<div style="font-size:13px;font-weight:600;color:var(--text)">'+p.name+'</div>';
+  html += '<div style="font-size:11px;font-family:\'DM Mono\',monospace">';
+  html += '<span style="color:'+diffCol+'">'+avgGap+'天</span> <span style="color:var(--text3)">/ 推荐'+recGap+'天</span>';
+  html += '</div></div>';
+
+  // 进度条 + 100%标记线
+  html += '<div style="position:relative;height:8px;background:var(--bg3);border-radius:4px;margin-bottom:5px">';
+  html += '<div style="position:absolute;left:0;top:0;height:8px;border-radius:4px;background:'+diffCol+';width:'+Math.round(barPct/150*100)+'%;transition:width .3s"></div>';
+  html += '<div style="position:absolute;left:'+markerLeft+'%;top:-2px;bottom:-2px;width:2px;background:var(--text3)"></div>';
+  html += '</div>';
+
+  html += '<div style="display:flex;justify-content:flex-end">';
+  html += '<span style="font-size:10px;color:'+diffCol+';font-family:\'DM Mono\',monospace">'+pctLabelText+'</span>';
+  html += '</div></div>';
+
+  return html;
+}
+
 function renderStats() {
   const plants = db.plants;
   const sub    = document.getElementById('stats-sub');
@@ -3831,68 +3883,21 @@ function renderStats() {
   // 保存本次评分供下次对比
   try { localStorage.setItem('plantcare_prev_scores', JSON.stringify(newScores)); } catch(e) {}
 
-  // ── 浇水间隔对比
+  // ── 浇水间隔对比（新版：单进度条 + 100%标记点 + 百分比）
   html += '<div style="margin:16px 16px 0">';
   html += '<div class="stats-section-title">💧 实际 vs 推荐浇水间隔</div>';
-  html += '<div style="display:flex;flex-direction:column;gap:5px;margin-top:8px">';
+  html += '<div style="display:flex;flex-direction:column;gap:6px;margin-top:8px">';
   intervalData.forEach(function(item){
-    var p=item.plant, avgGap=item.avgGap, recGap=item.recGap;
-    var hasData = avgGap !== null;
-    var diff    = hasData ? avgGap - recGap : null;
-    var diffCol = diff===null ? 'var(--text3)' : diff>recGap*0.2 ? 'var(--red)' : diff < -recGap*0.2 ? '#5bb9e1' : 'var(--green)';
-    var barW    = hasData ? Math.min(100, Math.round(avgGap/recGap*50)) : 0;
-    var dataLabel = hasData
-      ? ('<span style="color:'+diffCol+'">'+avgGap+'天</span> <span style="color:var(--text3)">/ 推荐'+recGap+'天</span>')
-      : '<span style="color:var(--text3)">记录不足</span>';
-    html += '<div style="background:var(--bg2);border:1px solid var(--border);border-radius:10px;padding:10px 14px">';
-    html += '<div style="display:flex;justify-content:space-between;margin-bottom:5px">';
-    html += '<div style="font-size:13px;font-weight:600;color:var(--text)">'+p.name+'</div>';
-    html += '<div style="font-size:11px;font-family:\'DM Mono\',monospace">'+dataLabel+'</div></div>';
-    html += '<div style="display:flex;gap:3px;align-items:center">';
-    html += '<div style="font-size:9px;color:var(--text3);width:24px">实际</div>';
-    html += '<div style="flex:1;height:5px;background:var(--bg3);border-radius:3px">';
-    html += '<div style="height:5px;border-radius:3px;background:'+diffCol+';width:'+barW+'%"></div></div></div>';
-    html += '<div style="display:flex;gap:3px;align-items:center;margin-top:3px">';
-    html += '<div style="font-size:9px;color:var(--text3);width:24px">推荐</div>';
-    html += '<div style="flex:1;height:5px;background:var(--bg3);border-radius:3px">';
-    html += '<div style="height:5px;border-radius:3px;background:rgba(168,200,120,0.5);width:50%"></div></div></div></div>';
+    html += intervalBarHTML(item.plant, item.avgGap, item.recGap, false);
   });
   html += '</div></div>';
 
-  // ── 施肥间隔对比
+  // ── 施肥间隔对比（新版：单进度条 + 100%标记点 + 百分比）
   html += '<div style="margin:16px 16px 0">';
   html += '<div class="stats-section-title">🧪 实际 vs 推荐施肥间隔</div>';
-  html += '<div style="display:flex;flex-direction:column;gap:5px;margin-top:8px">';
+  html += '<div style="display:flex;flex-direction:column;gap:6px;margin-top:8px">';
   fertIntervalData.forEach(function(item){
-    var p=item.plant, avgGap=item.avgGap, recGap=item.recGap;
-    var isStopSeason = recGap === 0;
-    var hasData = avgGap !== null;
-
-    html += '<div style="background:var(--bg2);border:1px solid var(--border);border-radius:10px;padding:10px 14px">';
-    html += '<div style="display:flex;justify-content:space-between;margin-bottom:5px">';
-    html += '<div style="font-size:13px;font-weight:600;color:var(--text)">'+p.name+'</div>';
-
-    if (isStopSeason) {
-      html += '<div style="font-size:11px;font-family:\'DM Mono\',monospace;color:var(--text3)">🧪 当季建议停肥</div></div>';
-      html += '</div>';
-      return;
-    }
-
-    var diff    = hasData ? avgGap - recGap : null;
-    var diffCol = diff===null ? 'var(--text3)' : diff>recGap*0.2 ? 'var(--red)' : diff < -recGap*0.2 ? '#5bb9e1' : 'var(--green)';
-    var barW    = hasData ? Math.min(100, Math.round(avgGap/recGap*50)) : 0;
-    var dataLabel = hasData
-      ? ('<span style="color:'+diffCol+'">'+avgGap+'天</span> <span style="color:var(--text3)">/ 推荐'+recGap+'天</span>')
-      : '<span style="color:var(--text3)">记录不足</span>';
-    html += '<div style="font-size:11px;font-family:\'DM Mono\',monospace">'+dataLabel+'</div></div>';
-    html += '<div style="display:flex;gap:3px;align-items:center">';
-    html += '<div style="font-size:9px;color:var(--text3);width:24px">实际</div>';
-    html += '<div style="flex:1;height:5px;background:var(--bg3);border-radius:3px">';
-    html += '<div style="height:5px;border-radius:3px;background:'+diffCol+';width:'+barW+'%"></div></div></div>';
-    html += '<div style="display:flex;gap:3px;align-items:center;margin-top:3px">';
-    html += '<div style="font-size:9px;color:var(--text3);width:24px">推荐</div>';
-    html += '<div style="flex:1;height:5px;background:var(--bg3);border-radius:3px">';
-    html += '<div style="height:5px;border-radius:3px;background:rgba(212,168,83,0.5);width:50%"></div></div></div></div>';
+    html += intervalBarHTML(item.plant, item.avgGap, item.recGap, true);
   });
   html += '</div></div>';
 
